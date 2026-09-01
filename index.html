@@ -366,6 +366,56 @@
     font-size:15px;
   }
 
+  /* Everyone's picks chart */
+  .chart-note{
+    color:#5B6B60;
+    font-size:15px;
+    margin:4px 0 14px;
+  }
+  .chart-scroll{
+    overflow-x:auto;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--white);
+    -webkit-overflow-scrolling:touch;
+  }
+  table.chart-table{
+    border-collapse:collapse;
+    width:100%;
+    font-size:15px;
+  }
+  .chart-table th, .chart-table td{
+    padding:12px 14px;
+    text-align:left;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .chart-table thead th{
+    background:var(--field);
+    color:var(--white);
+    font-family:Georgia,serif;
+    font-weight:700;
+    position:sticky;
+    top:0;
+  }
+  .chart-table tbody tr:nth-child(even){background:#FAF8F2;}
+  .chart-table td.chart-game{
+    font-weight:700;
+    color:var(--ink);
+    position:sticky;
+    left:0;
+    background:inherit;
+    box-shadow:2px 0 0 var(--line);
+  }
+  .chart-table thead th:first-child{
+    position:sticky;
+    left:0;
+    z-index:2;
+  }
+  .chart-table td.chart-pick.correct{color:var(--field);font-weight:700;}
+  .chart-table td.chart-pick.wrong{color:var(--red);}
+  .chart-table td.chart-pick.pending{color:#9B9788;font-style:italic;}
+
   .toast{
     position:fixed;
     left:50%;
@@ -483,6 +533,14 @@
       <div id="revealList"></div>
     </div>
 
+    <div class="reveal" id="chartSection">
+      <h2>Everyone's Picks</h2>
+      <div class="chart-note" id="chartNote">Submit your own picks to see everyone else's.</div>
+      <div class="chart-scroll" id="chartScroll" style="display:none;">
+        <table class="chart-table" id="chartTable"></table>
+      </div>
+    </div>
+
     <div class="admin-toggle">
       <button id="adminToggleBtn">Commissioner: enter final results</button>
     </div>
@@ -525,6 +583,17 @@
   </div>
 </div>
 
+<div class="pin-overlay" id="confirmOverlay">
+  <div class="pin-card">
+    <h3>Confirm Your Picks</h3>
+    <p style="margin-bottom:18px;">You're about to submit your picks for <span id="confirmWeekLabel">this week</span>. Once submitted, your picks are final and cannot be changed. Please review your selections before continuing.</p>
+    <div class="pin-actions">
+      <button class="pin-cancel" id="confirmCancelBtn">Cancel</button>
+      <button class="pin-unlock" id="confirmSubmitBtn">Submit Picks</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------------------------------------------------------------------
 // Storage layer: talks to /api/storage (backed by Upstash Redis on
@@ -545,9 +614,10 @@ window.storage = {
     }
     return res.json();
   },
-  async set(key, value, pin){
+  async set(key, value, pin, lock){
     const body = { key, value };
     if(pin) body.pin = pin;
+    if(lock) body.lock = true;
     const res = await fetch('/api/storage', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -613,6 +683,16 @@ const viewStandings = document.getElementById('viewStandings');
 const standingsTable = document.getElementById('standingsTable');
 const weekBreakdown = document.getElementById('weekBreakdown');
 const myLinkLine = document.getElementById('myLinkLine');
+const chartSection = document.getElementById('chartSection');
+const chartNote = document.getElementById('chartNote');
+const chartScroll = document.getElementById('chartScroll');
+const chartTable = document.getElementById('chartTable');
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmWeekLabel = document.getElementById('confirmWeekLabel');
+const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+const confirmSubmitBtn = document.getElementById('confirmSubmitBtn');
+
+let myLocked = false;
 
 function showToast(msg){
   toast.textContent = msg;
@@ -708,14 +788,17 @@ function populateWeekPicker(){
 weekPicker.onchange = async () => {
   currentWeek = weekPicker.value;
   picks = {};
+  myLocked = false;
   if(currentUser){
     await loadPicksForUser();
+    await loadLockStatus();
   }
   await loadResults();
   renderGames();
   renderAdminGames();
-  updateProgress();
+  updateSubmitUI();
   loadReveal();
+  loadPicksChart();
 };
 
 function renderWho(){
@@ -755,6 +838,15 @@ async function loadResults(){
   }
 }
 
+async function loadLockStatus(){
+  try{
+    const result = await window.storage.get(`locked:week${currentWeek}:${currentUser}`);
+    myLocked = !!result;
+  }catch(e){
+    myLocked = false;
+  }
+}
+
 async function selectUser(name, fromLink){
   const unlocked = await unlockUser(name);
   if(!unlocked){
@@ -762,13 +854,12 @@ async function selectUser(name, fromLink){
     renderWho();
     submitBtn.disabled = true;
     myLinkLine.style.display = 'none';
-    updateProgress();
+    updateSubmitUI();
     return;
   }
 
   currentUser = name;
   renderWho();
-  submitBtn.disabled = false;
   statusLine.classList.remove('show');
 
   const personalUrl = window.location.origin + window.location.pathname + '?user=' + encodeURIComponent(name);
@@ -777,14 +868,16 @@ async function selectUser(name, fromLink){
 
   if(!fromLink) history.replaceState(null, '', '?user=' + encodeURIComponent(name));
 
-  const games = WEEKS[currentWeek].games;
-  if(Object.keys(picks).length === games.length){
-    statusLine.textContent = `You already submitted picks for this week. Tap a team to change any pick, then save again.`;
+  await loadLockStatus();
+
+  if(myLocked){
+    statusLine.textContent = `Your picks for this week are submitted and locked in. Good luck!`;
     statusLine.classList.add('show');
   }
 
   renderGames();
-  updateProgress();
+  updateSubmitUI();
+  loadPicksChart();
 }
 
 function renderGames(){
@@ -813,7 +906,7 @@ function renderGames(){
       }
       btn.className = cls;
       btn.textContent = t.team;
-      btn.disabled = !currentUser;
+      btn.disabled = !currentUser || myLocked;
       btn.onclick = () => makePick(g.id, t.team);
       teams.appendChild(btn);
     });
@@ -829,24 +922,62 @@ function renderGames(){
 }
 
 function makePick(gameId, team){
-  if(!currentUser) return;
+  if(!currentUser || myLocked) return;
   picks[gameId] = team;
   renderGames();
-  updateProgress();
+  updateSubmitUI();
 }
 
-function updateProgress(){
+function updateSubmitUI(){
+  const games = WEEKS[currentWeek].games;
+  const count = Object.keys(picks).length;
+
   if(!currentUser){
+    submitBtn.textContent = 'Save my picks';
+    submitBtn.disabled = true;
     progressLine.textContent = 'Pick a name to start';
     return;
   }
-  const games = WEEKS[currentWeek].games;
-  const count = Object.keys(picks).length;
+
+  if(myLocked){
+    submitBtn.textContent = 'Picks Submitted';
+    submitBtn.disabled = true;
+    progressLine.textContent = `Your picks are locked in for this week.`;
+    return;
+  }
+
   progressLine.textContent = `${count} of ${games.length} games picked`;
+
+  if(count === games.length && games.length > 0){
+    submitBtn.textContent = 'Submit Picks';
+    submitBtn.disabled = false;
+  }else{
+    submitBtn.textContent = 'Save my picks';
+    submitBtn.disabled = false;
+  }
+}
+
+// Shows the "confirm submit" modal and resolves true/false with the
+// person's choice.
+function askConfirmSubmit(){
+  return new Promise((resolve)=>{
+    confirmWeekLabel.textContent = WEEKS[currentWeek].label;
+    confirmOverlay.classList.add('show');
+
+    function cleanup(result){
+      confirmOverlay.classList.remove('show');
+      confirmSubmitBtn.onclick = null;
+      confirmCancelBtn.onclick = null;
+      resolve(result);
+    }
+
+    confirmSubmitBtn.onclick = () => cleanup(true);
+    confirmCancelBtn.onclick = () => cleanup(false);
+  });
 }
 
 async function submitPicks(){
-  if(!currentUser) return;
+  if(!currentUser || myLocked) return;
   const pin = storedPin(currentUser);
   if(!pin){
     showToast('Select your name again to unlock your picks');
@@ -855,23 +986,44 @@ async function submitPicks(){
 
   const games = WEEKS[currentWeek].games;
   const count = Object.keys(picks).length;
-  if(count < games.length){
-    statusLine.textContent = `You've only picked ${count} of ${games.length} games. Save anyway, or finish picking every game first.`;
+  const isFinal = count === games.length && games.length > 0;
+
+  if(isFinal){
+    const confirmed = await askConfirmSubmit();
+    if(!confirmed) return;
+  }else{
+    statusLine.textContent = `You've only picked ${count} of ${games.length} games. Saved so far — come back any time to finish and submit.`;
     statusLine.classList.add('show');
   }
 
   try{
-    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), pin);
+    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), pin, isFinal);
     // Public progress count only — never the actual team choices — so the
     // "who's submitted" list can work without exposing anyone's picks.
     await window.storage.set(`progress:week${currentWeek}:${currentUser}`, String(count));
-    showToast('Picks saved!');
-    statusLine.classList.remove('show');
+
+    if(isFinal){
+      myLocked = true;
+      statusLine.textContent = `Your picks for this week are submitted and locked in. Good luck!`;
+      statusLine.classList.add('show');
+      showToast('Picks submitted!');
+      renderGames();
+      loadPicksChart();
+    }else{
+      statusLine.classList.remove('show');
+      showToast('Picks saved!');
+    }
+
+    updateSubmitUI();
     loadReveal();
   }catch(e){
     if(e.status === 401){
       clearStoredPin(currentUser);
       showToast('Your PIN changed — reselect your name to re-enter it');
+    }else if(e.status === 403){
+      myLocked = true;
+      updateSubmitUI();
+      showToast('Your picks were already submitted for this week');
     }else{
       showToast('Something went wrong saving — try again');
     }
@@ -883,18 +1035,97 @@ async function loadReveal(){
   const games = WEEKS[currentWeek].games;
   for(const name of FAMILY){
     let count = 0;
+    let locked = false;
     try{
       const result = await window.storage.get(`progress:week${currentWeek}:${name}`);
       count = result ? (parseInt(result.value, 10) || 0) : 0;
     }catch(e){ count = 0; }
+    try{
+      const lockedResult = await window.storage.get(`locked:week${currentWeek}:${name}`);
+      locked = !!lockedResult;
+    }catch(e){ locked = false; }
 
-    const done = count === games.length && games.length > 0;
     const row = document.createElement('div');
     row.className = 'reveal-row';
-    const status = done ? 'Submitted ✓' : (count > 0 ? `${count} of ${games.length} picked` : 'Not yet');
-    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${done?'done':''}">${status}</span>`;
+    const status = locked ? 'Submitted ✓' : (count > 0 ? `${count} of ${games.length} picked` : 'Not yet');
+    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${locked?'done':''}">${status}</span>`;
     revealList.appendChild(row);
   }
+}
+
+// --- Everyone's picks chart ---
+// Only loads successfully once the current user has submitted their own
+// picks for the week — enforced server-side, not just hidden client-side.
+
+async function loadPicksChart(){
+  if(!currentUser || !myLocked){
+    chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
+    chartNote.style.display = 'block';
+    chartScroll.style.display = 'none';
+    return;
+  }
+
+  const pin = storedPin(currentUser);
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'getWeekPicks', week: currentWeek, name: currentUser, pin })
+    });
+    if(!res.ok){
+      chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
+      chartNote.style.display = 'block';
+      chartScroll.style.display = 'none';
+      return;
+    }
+    const data = await res.json();
+    renderPicksChart(data.picks || {});
+  }catch(e){
+    chartNote.textContent = 'Could not load everyone\'s picks — try again shortly.';
+    chartNote.style.display = 'block';
+    chartScroll.style.display = 'none';
+  }
+}
+
+function renderPicksChart(allPicks){
+  const games = WEEKS[currentWeek].games;
+  const submittedNames = FAMILY.filter(n => allPicks[n]);
+
+  if(submittedNames.length === 0){
+    chartNote.textContent = 'No one else has submitted yet — check back later.';
+    chartNote.style.display = 'block';
+    chartScroll.style.display = 'none';
+    return;
+  }
+
+  chartNote.style.display = 'none';
+  chartScroll.style.display = 'block';
+
+  let html = '<thead><tr><th>Game</th>';
+  submittedNames.forEach(name=>{
+    html += `<th>${name}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  games.forEach(g=>{
+    html += `<tr><td class="chart-game">${g.away} @ ${g.home}</td>`;
+    submittedNames.forEach(name=>{
+      const pick = allPicks[name][g.id];
+      const winner = results[g.id];
+      let cls = 'chart-pick';
+      let label = pick || '—';
+      if(pick && winner){
+        cls += winner === pick ? ' correct' : ' wrong';
+      }else if(!winner && pick){
+        cls += ' pending';
+      }
+      html += `<td class="${cls}">${label}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody>';
+  chartTable.innerHTML = html;
 }
 
 // --- Admin: enter results ---
@@ -1132,8 +1363,10 @@ populateWeekPicker();
 renderWho();
 renderGames();
 renderAdminGames();
+updateSubmitUI();
 loadReveal();
 loadResults();
+loadPicksChart();
 
 const urlParams = new URLSearchParams(window.location.search);
 const linkedUser = urlParams.get('user');
