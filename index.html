@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
+<title>Family NFL Pick'em</title>
+<style>
+  :root{
+    --paper:#F3F1EC;
+    --ink:#1C2B39;
+    --field:#2E5339;
+    --field-dark:#213C29;
+    --gold:#C99A2E;
+    --line:#D8D2C4;
+    --white:#FFFFFF;
+    --red:#8C3B2E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family: "Source Sans Pro", "Segoe UI", Arial, sans-serif;
+    font-size:18px;
+    line-height:1.45;
+    padding:0 0 40px 0;
+  }
+  h1,h2,h3{
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight:700;
+    margin:0;
+  }
+  .masthead{
+    background:var(--field);
+    color:var(--paper);
+    padding:26px 20px 0;
+    text-align:left;
+    border-bottom:6px solid var(--gold);
+  }
+  .masthead h1{
+    font-size:clamp(26px,6vw,38px);
+    letter-spacing:0.3px;
+  }
+  .masthead p{
+    margin:8px 0 18px;
+    font-size:16px;
+    color:#DDE6DD;
+  }
+  .tabs{
+    display:flex;
+    gap:0;
+  }
+  .tab-btn{
+    flex:1;
+    font-family:inherit;
+    font-size:16px;
+    font-weight:700;
+    padding:14px 8px;
+    border:none;
+    background:transparent;
+    color:#B9C9BB;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+  }
+  .tab-btn.active{
+    color:var(--white);
+    border-bottom:3px solid var(--gold);
+  }
+  .wrap{
+    max-width:640px;
+    margin:0 auto;
+    padding:0 18px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .week-select{
+    margin-top:20px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .week-select label{font-weight:700;font-size:15px;}
+  .week-select select{
+    font-size:17px;
+    font-family:inherit;
+    padding:10px 12px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--white);
+    color:var(--ink);
+  }
+
+  .who{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    margin-top:18px;
+    padding:20px;
+  }
+  .who h2{font-size:20px;margin-bottom:14px;}
+  .who-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:10px;
+  }
+  @media (max-width:420px){
+    .who-grid{grid-template-columns:repeat(2,1fr);}
+  }
+  .who-btn{
+    font-size:19px;
+    font-family:inherit;
+    padding:16px 8px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    font-weight:600;
+  }
+  .who-btn.active{
+    background:var(--field);
+    border-color:var(--field);
+    color:var(--white);
+  }
+  .status-line{
+    margin-top:18px;
+    padding:14px 16px;
+    border-radius:8px;
+    background:#EFEAD9;
+    border:1px solid var(--line);
+    font-size:16px;
+    display:none;
+  }
+  .status-line.show{display:block;}
+  .games{
+    margin-top:26px;
+  }
+  .games h2{
+    font-size:20px;
+    margin-bottom:4px;
+  }
+  .games .sub{
+    color:#5B6B60;
+    font-size:15px;
+    margin-bottom:16px;
+  }
+  .game{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .game-time{
+    font-size:14px;
+    color:#7A7568;
+    margin-bottom:10px;
+    font-weight:600;
+  }
+  .teams{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .team-btn{
+    font-size:18px;
+    font-family:inherit;
+    font-weight:700;
+    padding:18px 10px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    min-height:64px;
+    position:relative;
+  }
+  .team-btn.selected{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:var(--ink);
+  }
+  .team-btn.winner{
+    outline:3px solid var(--field);
+    outline-offset:-3px;
+  }
+  .team-btn.correct::after{
+    content:"✓";
+    position:absolute;
+    top:4px;
+    right:8px;
+    color:var(--field);
+    font-weight:900;
+  }
+  .team-btn.wrong::after{
+    content:"✕";
+    position:absolute;
+    top:4px;
+    right:8px;
+    color:var(--red);
+    font-weight:900;
+  }
+  .at{
+    text-align:center;
+    font-size:13px;
+    color:#9B9788;
+    margin:6px 0;
+  }
+  .submit-bar{
+    position:sticky;
+    bottom:0;
+    background:var(--paper);
+    padding:16px 0 0;
+    margin-top:10px;
+  }
+  .submit-btn{
+    width:100%;
+    font-size:20px;
+    font-weight:700;
+    font-family:inherit;
+    padding:18px;
+    border-radius:10px;
+    border:none;
+    background:var(--field);
+    color:var(--white);
+    cursor:pointer;
+  }
+  .submit-btn:disabled{
+    background:#A7ADA2;
+    cursor:not-allowed;
+  }
+  .progress{
+    text-align:center;
+    font-size:14px;
+    color:#5B6B60;
+    margin-top:8px;
+  }
+  .reveal{
+    margin-top:30px;
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px;
+  }
+  .reveal h2{font-size:19px;margin-bottom:12px;}
+  .reveal-row{
+    display:flex;
+    justify-content:space-between;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+    font-size:16px;
+  }
+  .reveal-row:last-child{border-bottom:none;}
+  .reveal-name{font-weight:700;}
+  .reveal-status{color:#5B6B60;}
+  .reveal-status.done{color:var(--field);}
+
+  .text-btn{
+    background:none;
+    border:none;
+    color:#7A7568;
+    font-size:14px;
+    text-decoration:underline;
+    cursor:pointer;
+    font-family:inherit;
+    padding:0;
+  }
+  .links-panel{
+    margin-top:12px;
+    border-top:1px solid var(--line);
+    padding-top:8px;
+  }
+  .links-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .links-row:last-child{border-bottom:none;}
+  .links-row .link-name{
+    font-weight:700;
+    font-size:15px;
+    width:70px;
+    flex-shrink:0;
+  }
+  .links-row .link-text{
+    flex:1;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#5B6B60;
+    font-size:13px;
+  }
+  .copy-btn{
+    font-family:inherit;
+    font-size:13px;
+    font-weight:700;
+    padding:8px 12px;
+    border-radius:6px;
+    border:2px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+
+  .admin-toggle{
+    margin-top:26px;
+    text-align:center;
+  }
+  .admin-toggle button{
+    background:none;
+    border:none;
+    color:#7A7568;
+    font-size:14px;
+    text-decoration:underline;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .admin-panel{
+    margin-top:14px;
+    background:#EFEAD9;
+    border:1px dashed #B8A96F;
+    border-radius:10px;
+    padding:18px;
+    display:none;
+  }
+  .admin-panel.show{display:block;}
+  .admin-panel h3{font-size:17px;margin-bottom:6px;}
+  .admin-panel .sub{color:#7A7568;font-size:14px;margin-bottom:14px;}
+  .admin-game{
+    margin-bottom:10px;
+  }
+  .admin-game .label{font-size:14px;font-weight:700;margin-bottom:6px;}
+  .admin-teams{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  .admin-team-btn{
+    font-size:15px;
+    font-family:inherit;
+    font-weight:600;
+    padding:10px 6px;
+    border-radius:6px;
+    border:2px solid var(--line);
+    background:var(--white);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .admin-team-btn.set{
+    background:var(--field);
+    border-color:var(--field);
+    color:var(--white);
+  }
+
+  /* Standings */
+  .standings-table{
+    margin-top:20px;
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .standings-row{
+    display:flex;
+    align-items:center;
+    padding:16px 18px;
+    border-bottom:1px solid var(--line);
+    gap:14px;
+  }
+  .standings-row:last-child{border-bottom:none;}
+  .standings-rank{
+    font-family:Georgia,serif;
+    font-weight:700;
+    font-size:20px;
+    color:#9B9788;
+    width:26px;
+  }
+  .standings-name{
+    flex:1;
+    font-weight:700;
+    font-size:18px;
+  }
+  .standings-score{
+    font-weight:700;
+    font-size:20px;
+    color:var(--field);
+  }
+  .standings-note{
+    color:#5B6B60;
+    font-size:15px;
+    margin-top:14px;
+  }
+  .week-breakdown{
+    margin-top:26px;
+  }
+  .week-breakdown h3{font-size:16px;margin-bottom:10px;}
+  .week-row{
+    display:flex;
+    justify-content:space-between;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+    font-size:15px;
+  }
+
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:26px;
+    transform:translateX(-50%);
+    background:var(--field-dark);
+    color:var(--white);
+    padding:14px 22px;
+    border-radius:8px;
+    font-size:16px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease;
+    z-index:10;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <h1>Family NFL Pick'em</h1>
+  <p>2026 Season</p>
+  <div class="tabs">
+    <button class="tab-btn active" id="tabPicksBtn">Make Picks</button>
+    <button class="tab-btn" id="tabStandingsBtn">Standings</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- PICKS VIEW -->
+  <div class="view active" id="viewPicks">
+
+    <div class="week-select">
+      <label for="weekPicker">Week</label>
+      <select id="weekPicker"></select>
+    </div>
+
+    <div class="who">
+      <h2>Who's picking?</h2>
+      <div class="who-grid" id="whoGrid"></div>
+      <div class="standings-note" id="myLinkLine" style="display:none;margin-top:14px;"></div>
+      <button class="text-btn" id="showLinksBtn" style="margin-top:14px;">Get personal links for everyone</button>
+      <div class="links-panel" id="linksPanel" style="display:none;"></div>
+    </div>
+
+    <div class="status-line" id="statusLine"></div>
+
+    <div class="games">
+      <h2>This week's games</h2>
+      <div class="sub">Tap the team you think wins each game.</div>
+      <div id="gameList"></div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="submit-btn" id="submitBtn" disabled>Save my picks</button>
+      <div class="progress" id="progressLine">Pick a name to start</div>
+    </div>
+
+    <div class="reveal">
+      <h2>Who's submitted this week</h2>
+      <div id="revealList"></div>
+    </div>
+
+    <div class="admin-toggle">
+      <button id="adminToggleBtn">Commissioner: enter final results</button>
+    </div>
+    <div class="admin-panel" id="adminPanel">
+      <h3>Enter winners for Week <span id="adminWeekLabel"></span></h3>
+      <div class="sub">Tap the team that won each game. This updates everyone's standings.</div>
+      <div id="adminGameList"></div>
+    </div>
+
+  </div>
+
+  <!-- STANDINGS VIEW -->
+  <div class="view" id="viewStandings">
+    <h2 style="margin-top:20px;font-size:22px;">Season Standings</h2>
+    <div class="standings-note">1 point for each correct pick. Updates as results are entered.</div>
+    <div class="standings-table" id="standingsTable"></div>
+    <button class="submit-btn" id="backupBtn" style="margin-top:18px;">Download season backup (.csv)</button>
+    <div class="standings-note">Saves a copy of every pick and every result to your device — keep this safe in case the app ever goes down.</div>
+
+    <div class="week-breakdown">
+      <h3>By week</h3>
+      <div id="weekBreakdown"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">Picks saved!</div>
+
+<script>
+// ---------------------------------------------------------------------
+// Storage layer: talks to /api/storage (backed by Upstash Redis on
+// Vercel) instead of the Claude-artifact-only window.storage API.
+// Same method shapes as before (key, shared) so the app logic below
+// didn't need to change — the "shared" flag is accepted but ignored,
+// since on a real deployment there's only one shared database anyway.
+// ---------------------------------------------------------------------
+window.storage = {
+  async get(key){
+    const res = await fetch(`/api/storage?key=${encodeURIComponent(key)}`);
+    if(res.status === 404) return null;
+    if(!res.ok) throw new Error('storage get failed: ' + res.status);
+    return res.json();
+  },
+  async set(key, value){
+    const res = await fetch('/api/storage', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ key, value })
+    });
+    if(!res.ok) throw new Error('storage set failed: ' + res.status);
+    return res.json();
+  },
+  async delete(key){
+    const res = await fetch(`/api/storage?key=${encodeURIComponent(key)}`, { method:'DELETE' });
+    if(!res.ok) throw new Error('storage delete failed: ' + res.status);
+    return res.json();
+  },
+  async list(prefix){
+    const res = await fetch(`/api/storage?prefix=${encodeURIComponent(prefix || '')}`);
+    if(!res.ok) throw new Error('storage list failed: ' + res.status);
+    return res.json();
+  }
+};
+
+const FAMILY = ["Ace","Cisco","Dad","Lena","Mom","Tonio"];
+
+// Add a new week here each time the schedule updates.
+const WEEKS = {
+  "1": {
+    label: "Week 1",
+    games: [
+      {id:"g1", away:"New England Patriots", home:"Seattle Seahawks", time:"Wed Sep 9, 8:20 PM ET"},
+      {id:"g2", away:"San Francisco 49ers", home:"Los Angeles Rams", time:"Thu Sep 10, 8:35 PM ET"},
+      {id:"g3", away:"Chicago Bears", home:"Carolina Panthers", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g4", away:"Baltimore Ravens", home:"Indianapolis Colts", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g5", away:"Atlanta Falcons", home:"Pittsburgh Steelers", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g6", away:"Cleveland Browns", home:"Jacksonville Jaguars", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g7", away:"Tampa Bay Buccaneers", home:"Cincinnati Bengals", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g8", away:"New York Jets", home:"Tennessee Titans", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g9", away:"New Orleans Saints", home:"Detroit Lions", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g10", away:"Buffalo Bills", home:"Houston Texans", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g11", away:"Arizona Cardinals", home:"Los Angeles Chargers", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g12", away:"Green Bay Packers", home:"Minnesota Vikings", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g13", away:"Miami Dolphins", home:"Las Vegas Raiders", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g14", away:"Washington Commanders", home:"Philadelphia Eagles", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g15", away:"Dallas Cowboys", home:"New York Giants", time:"Sun Sep 13, 8:20 PM ET"}
+    ]
+  }
+};
+
+let currentWeek = Object.keys(WEEKS)[0];
+let currentUser = null;
+let picks = {};
+let results = {};
+let adminOpen = false;
+let linksOpen = false;
+
+const weekPicker = document.getElementById('weekPicker');
+const whoGrid = document.getElementById('whoGrid');
+const gameList = document.getElementById('gameList');
+const submitBtn = document.getElementById('submitBtn');
+const progressLine = document.getElementById('progressLine');
+const statusLine = document.getElementById('statusLine');
+const revealList = document.getElementById('revealList');
+const toast = document.getElementById('toast');
+const adminToggleBtn = document.getElementById('adminToggleBtn');
+const adminPanel = document.getElementById('adminPanel');
+const adminWeekLabel = document.getElementById('adminWeekLabel');
+const adminGameList = document.getElementById('adminGameList');
+const tabPicksBtn = document.getElementById('tabPicksBtn');
+const tabStandingsBtn = document.getElementById('tabStandingsBtn');
+const viewPicks = document.getElementById('viewPicks');
+const viewStandings = document.getElementById('viewStandings');
+const standingsTable = document.getElementById('standingsTable');
+const weekBreakdown = document.getElementById('weekBreakdown');
+const showLinksBtn = document.getElementById('showLinksBtn');
+const linksPanel = document.getElementById('linksPanel');
+
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'), 2200);
+}
+
+function populateWeekPicker(){
+  weekPicker.innerHTML = '';
+  Object.keys(WEEKS).forEach(wk=>{
+    const opt = document.createElement('option');
+    opt.value = wk;
+    opt.textContent = WEEKS[wk].label;
+    weekPicker.appendChild(opt);
+  });
+  weekPicker.value = currentWeek;
+}
+
+weekPicker.onchange = async () => {
+  currentWeek = weekPicker.value;
+  picks = {};
+  if(currentUser){
+    await loadPicksForUser();
+  }
+  await loadResults();
+  renderGames();
+  renderAdminGames();
+  updateProgress();
+  loadReveal();
+};
+
+function renderWho(){
+  whoGrid.innerHTML = '';
+  FAMILY.forEach(name=>{
+    const btn = document.createElement('button');
+    btn.className = 'who-btn' + (currentUser===name ? ' active':'');
+    btn.textContent = name;
+    btn.onclick = () => selectUser(name);
+    whoGrid.appendChild(btn);
+  });
+}
+
+// --- Personal links panel ---
+
+showLinksBtn.onclick = () => {
+  linksOpen = !linksOpen;
+  linksPanel.style.display = linksOpen ? 'block' : 'none';
+  showLinksBtn.textContent = linksOpen ? 'Hide personal links' : 'Get personal links for everyone';
+  if(linksOpen) renderLinksPanel();
+};
+
+function renderLinksPanel(){
+  linksPanel.innerHTML = '';
+  const base = window.location.origin + window.location.pathname;
+  FAMILY.forEach(name=>{
+    const url = base + '?user=' + encodeURIComponent(name);
+    const row = document.createElement('div');
+    row.className = 'links-row';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'link-name';
+    nameEl.textContent = name;
+
+    const textEl = document.createElement('span');
+    textEl.className = 'link-text';
+    textEl.textContent = url;
+
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.onclick = async () => {
+      try{
+        await navigator.clipboard.writeText(url);
+        btn.textContent = 'Copied!';
+        setTimeout(()=>{ btn.textContent = 'Copy'; }, 1500);
+      }catch(e){
+        showToast('Could not copy — long-press the link to copy it');
+      }
+    };
+
+    row.appendChild(nameEl);
+    row.appendChild(textEl);
+    row.appendChild(btn);
+    linksPanel.appendChild(row);
+  });
+}
+
+async function loadPicksForUser(){
+  try{
+    const result = await window.storage.get(`picks:week${currentWeek}:${currentUser}`, true);
+    picks = result ? JSON.parse(result.value) : {};
+  }catch(e){
+    picks = {};
+  }
+}
+
+async function loadResults(){
+  try{
+    const result = await window.storage.get(`results:week${currentWeek}`, true);
+    results = result ? JSON.parse(result.value) : {};
+  }catch(e){
+    results = {};
+  }
+}
+
+async function selectUser(name, fromLink){
+  currentUser = name;
+  renderWho();
+  submitBtn.disabled = false;
+  statusLine.classList.remove('show');
+
+  const myLinkLine = document.getElementById('myLinkLine');
+  const personalUrl = window.location.origin + window.location.pathname + '?user=' + encodeURIComponent(name);
+  myLinkLine.innerHTML = `Bookmark <a href="${personalUrl}">your personal link</a> to open straight to your picks next time.`;
+  myLinkLine.style.display = 'block';
+
+  if(!fromLink) history.replaceState(null, '', '?user=' + encodeURIComponent(name));
+
+  await loadPicksForUser();
+
+  const games = WEEKS[currentWeek].games;
+  if(Object.keys(picks).length === games.length){
+    statusLine.textContent = `You already submitted picks for this week. Tap a team to change any pick, then save again.`;
+    statusLine.classList.add('show');
+  }
+
+  renderGames();
+  updateProgress();
+}
+
+function renderGames(){
+  gameList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  games.forEach(g=>{
+    const card = document.createElement('div');
+    card.className = 'game';
+
+    const time = document.createElement('div');
+    time.className = 'game-time';
+    time.textContent = g.time;
+    card.appendChild(time);
+
+    const teams = document.createElement('div');
+    teams.className = 'teams';
+
+    [ {side:'away', team:g.away}, {side:'home', team:g.home} ].forEach(t=>{
+      const btn = document.createElement('button');
+      let cls = 'team-btn';
+      if(picks[g.id]===t.team) cls += ' selected';
+      const winner = results[g.id];
+      if(winner){
+        if(picks[g.id]===t.team && winner===t.team) cls += ' correct';
+        else if(picks[g.id]===t.team && winner!==t.team) cls += ' wrong';
+      }
+      btn.className = cls;
+      btn.textContent = t.team;
+      btn.disabled = !currentUser;
+      btn.onclick = () => makePick(g.id, t.team);
+      teams.appendChild(btn);
+    });
+
+    const at = document.createElement('div');
+    at.className = 'at';
+    at.textContent = 'at';
+
+    card.appendChild(at);
+    card.appendChild(teams);
+    gameList.appendChild(card);
+  });
+}
+
+function makePick(gameId, team){
+  if(!currentUser) return;
+  picks[gameId] = team;
+  renderGames();
+  updateProgress();
+}
+
+function updateProgress(){
+  if(!currentUser){
+    progressLine.textContent = 'Pick a name to start';
+    return;
+  }
+  const games = WEEKS[currentWeek].games;
+  const count = Object.keys(picks).length;
+  progressLine.textContent = `${count} of ${games.length} games picked`;
+}
+
+async function submitPicks(){
+  if(!currentUser) return;
+  const games = WEEKS[currentWeek].games;
+  const count = Object.keys(picks).length;
+  if(count < games.length){
+    statusLine.textContent = `You've only picked ${count} of ${games.length} games. Save anyway, or finish picking every game first.`;
+    statusLine.classList.add('show');
+  }
+  try{
+    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), true);
+    showToast('Picks saved!');
+    statusLine.classList.remove('show');
+    loadReveal();
+  }catch(e){
+    showToast('Something went wrong saving — try again');
+  }
+}
+
+async function loadReveal(){
+  revealList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  for(const name of FAMILY){
+    let done = false;
+    try{
+      const result = await window.storage.get(`picks:week${currentWeek}:${name}`, true);
+      if(result){
+        const p = JSON.parse(result.value);
+        done = Object.keys(p).length === games.length;
+      }
+    }catch(e){ /* not submitted yet */ }
+
+    const row = document.createElement('div');
+    row.className = 'reveal-row';
+    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${done?'done':''}">${done ? 'Submitted ✓' : 'Not yet'}</span>`;
+    revealList.appendChild(row);
+  }
+}
+
+// --- Admin: enter results ---
+
+adminToggleBtn.onclick = () => {
+  adminOpen = !adminOpen;
+  adminPanel.classList.toggle('show', adminOpen);
+  if(adminOpen) renderAdminGames();
+};
+
+function renderAdminGames(){
+  adminWeekLabel.textContent = WEEKS[currentWeek].label.replace('Week ','');
+  adminGameList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  games.forEach(g=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-game';
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = `${g.away} at ${g.home}`;
+    wrap.appendChild(label);
+
+    const row = document.createElement('div');
+    row.className = 'admin-teams';
+    [g.away, g.home].forEach(team=>{
+      const btn = document.createElement('button');
+      btn.className = 'admin-team-btn' + (results[g.id]===team ? ' set':'');
+      btn.textContent = team;
+      btn.onclick = () => setResult(g.id, team);
+      row.appendChild(btn);
+    });
+    wrap.appendChild(row);
+    adminGameList.appendChild(wrap);
+  });
+}
+
+async function setResult(gameId, team){
+  results[gameId] = team;
+  try{
+    await window.storage.set(`results:week${currentWeek}`, JSON.stringify(results), true);
+    showToast('Result saved');
+  }catch(e){
+    showToast('Could not save result — try again');
+  }
+  renderAdminGames();
+  renderGames();
+}
+
+// --- Tabs ---
+
+tabPicksBtn.onclick = () => switchTab('picks');
+tabStandingsBtn.onclick = () => switchTab('standings');
+
+function switchTab(which){
+  const isPicks = which === 'picks';
+  tabPicksBtn.classList.toggle('active', isPicks);
+  tabStandingsBtn.classList.toggle('active', !isPicks);
+  viewPicks.classList.toggle('active', isPicks);
+  viewStandings.classList.toggle('active', !isPicks);
+  if(!isPicks) renderStandings();
+}
+
+// --- Standings ---
+
+async function renderStandings(){
+  standingsTable.innerHTML = '<div class="standings-row"><span class="standings-name">Loading…</span></div>';
+  weekBreakdown.innerHTML = '';
+
+  const totals = {};
+  FAMILY.forEach(n => totals[n] = 0);
+  const perWeek = {}; // week -> {name: correct}
+
+  for(const wk of Object.keys(WEEKS)){
+    let weekResults = {};
+    try{
+      const r = await window.storage.get(`results:week${wk}`, true);
+      weekResults = r ? JSON.parse(r.value) : {};
+    }catch(e){ weekResults = {}; }
+
+    perWeek[wk] = {};
+
+    for(const name of FAMILY){
+      let userPicks = {};
+      try{
+        const p = await window.storage.get(`picks:week${wk}:${name}`, true);
+        userPicks = p ? JSON.parse(p.value) : {};
+      }catch(e){ userPicks = {}; }
+
+      let correct = 0;
+      Object.keys(weekResults).forEach(gameId=>{
+        if(userPicks[gameId] && userPicks[gameId] === weekResults[gameId]){
+          correct += 1;
+        }
+      });
+      totals[name] += correct;
+      perWeek[wk][name] = correct;
+    }
+  }
+
+  const sorted = FAMILY.slice().sort((a,b)=> totals[b]-totals[a]);
+
+  standingsTable.innerHTML = '';
+  sorted.forEach((name, i)=>{
+    const row = document.createElement('div');
+    row.className = 'standings-row';
+    row.innerHTML = `<span class="standings-rank">${i+1}</span><span class="standings-name">${name}</span><span class="standings-score">${totals[name]} pts</span>`;
+    standingsTable.appendChild(row);
+  });
+
+  weekBreakdown.innerHTML = '';
+  Object.keys(WEEKS).forEach(wk=>{
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.marginTop = '14px';
+    title.style.fontSize = '15px';
+    title.textContent = WEEKS[wk].label;
+    weekBreakdown.appendChild(title);
+
+    FAMILY.forEach(name=>{
+      const row = document.createElement('div');
+      row.className = 'week-row';
+      row.innerHTML = `<span>${name}</span><span>${perWeek[wk][name] || 0} correct</span>`;
+      weekBreakdown.appendChild(row);
+    });
+  });
+}
+
+// --- Backup export ---
+
+async function downloadBackup(){
+  let rows = [["Week","Game","Away","Home","Winner", ...FAMILY]];
+
+  for(const wk of Object.keys(WEEKS)){
+    let weekResults = {};
+    try{
+      const r = await window.storage.get(`results:week${wk}`, true);
+      weekResults = r ? JSON.parse(r.value) : {};
+    }catch(e){ weekResults = {}; }
+
+    const userPicksByName = {};
+    for(const name of FAMILY){
+      try{
+        const p = await window.storage.get(`picks:week${wk}:${name}`, true);
+        userPicksByName[name] = p ? JSON.parse(p.value) : {};
+      }catch(e){ userPicksByName[name] = {}; }
+    }
+
+    WEEKS[wk].games.forEach(g=>{
+      const row = [
+        WEEKS[wk].label,
+        `${g.away} at ${g.home}`,
+        g.away,
+        g.home,
+        weekResults[g.id] || "",
+        ...FAMILY.map(name => userPicksByName[name][g.id] || "")
+      ];
+      rows.push(row);
+    });
+  }
+
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `family-pickem-backup-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded');
+}
+
+document.getElementById('backupBtn').onclick = downloadBackup;
+document.getElementById('submitBtn').onclick = submitPicks;
+
+// --- Init ---
+populateWeekPicker();
+renderWho();
+renderGames();
+renderAdminGames();
+loadReveal();
+loadResults();
+
+const urlParams = new URLSearchParams(window.location.search);
+const linkedUser = urlParams.get('user');
+if(linkedUser && FAMILY.includes(linkedUser)){
+  selectUser(linkedUser, true);
+}
+</script>
+
+</body>
+</html>
