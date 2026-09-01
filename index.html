@@ -372,49 +372,68 @@
     font-size:15px;
     margin:4px 0 14px;
   }
-  .chart-scroll{
-    overflow-x:auto;
+  .chart-legend{
+    display:flex;
+    gap:18px;
+    font-size:13px;
+    color:#5B6B60;
+    margin-bottom:14px;
+  }
+  .chart-legend span{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .chart-card{
+    background:var(--white);
     border:1px solid var(--line);
     border-radius:10px;
-    background:var(--white);
-    -webkit-overflow-scrolling:touch;
+    padding:14px 16px;
+    margin-bottom:12px;
   }
-  table.chart-table{
-    border-collapse:collapse;
-    width:100%;
+  .chart-card-header{
+    font-weight:700;
     font-size:15px;
+    margin-bottom:12px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px;
+    line-height:1.3;
   }
-  .chart-table th, .chart-table td{
-    padding:12px 14px;
-    text-align:left;
-    border-bottom:1px solid var(--line);
-    white-space:nowrap;
+  .chart-card-header .vs{
+    color:#9B9788;
+    font-weight:400;
+    font-size:13px;
+    margin:0 2px;
   }
-  .chart-table thead th{
-    background:var(--field);
-    color:var(--white);
-    font-family:Georgia,serif;
+  .chart-dot{
+    display:inline-block;
+    width:11px;
+    height:11px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .chart-dot.away{background:var(--field);}
+  .chart-dot.home{background:var(--gold);}
+  .chart-pills{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .chart-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:8px 13px;
+    border-radius:999px;
+    font-size:14px;
     font-weight:700;
-    position:sticky;
-    top:0;
   }
-  .chart-table tbody tr:nth-child(even){background:#FAF8F2;}
-  .chart-table td.chart-game{
-    font-weight:700;
-    color:var(--ink);
-    position:sticky;
-    left:0;
-    background:inherit;
-    box-shadow:2px 0 0 var(--line);
-  }
-  .chart-table thead th:first-child{
-    position:sticky;
-    left:0;
-    z-index:2;
-  }
-  .chart-table td.chart-pick.correct{color:var(--field);font-weight:700;}
-  .chart-table td.chart-pick.wrong{color:var(--red);}
-  .chart-table td.chart-pick.pending{color:#9B9788;font-style:italic;}
+  .chart-pill.away{background:var(--field);color:var(--white);}
+  .chart-pill.home{background:var(--gold);color:var(--ink);}
+  .chart-pill.wrong{opacity:0.5;}
+  .chart-pill .mark{font-weight:900;}
 
   .toast{
     position:fixed;
@@ -491,8 +510,8 @@
 <body>
 
 <div class="masthead">
-  <h1>Haynes NFL Pick'em</h1>
-  <p>2026-2027 Season</p>
+  <h1>Family NFL Pick'em</h1>
+  <p>2026 Season</p>
   <div class="tabs">
     <button class="tab-btn active" id="tabPicksBtn">Make Picks</button>
     <button class="tab-btn" id="tabStandingsBtn">Standings</button>
@@ -536,9 +555,11 @@
     <div class="reveal" id="chartSection">
       <h2>Everyone's Picks</h2>
       <div class="chart-note" id="chartNote">Submit your own picks to see everyone else's.</div>
-      <div class="chart-scroll" id="chartScroll" style="display:none;">
-        <table class="chart-table" id="chartTable"></table>
+      <div class="chart-legend" id="chartLegend" style="display:none;">
+        <span><span class="chart-dot away"></span>Picked the away team</span>
+        <span><span class="chart-dot home"></span>Picked the home team</span>
       </div>
+      <div id="chartCards" style="display:none;"></div>
     </div>
 
     <div class="admin-toggle">
@@ -548,6 +569,7 @@
       <h3>Enter winners for Week <span id="adminWeekLabel"></span></h3>
       <div class="sub">Tap the team that won each game. This updates everyone's standings.</div>
       <div id="adminGameList"></div>
+      <button class="text-btn" id="resetWeekBtn" style="margin-top:16px;color:var(--red);">Reset this week for everyone</button>
     </div>
 
   </div>
@@ -585,11 +607,11 @@
 
 <div class="pin-overlay" id="confirmOverlay">
   <div class="pin-card">
-    <h3>Confirm Your Picks</h3>
-    <p style="margin-bottom:18px;">You're about to submit your picks for <span id="confirmWeekLabel">this week</span>. Once submitted, your picks are final and cannot be changed. Please review your selections before continuing.</p>
+    <h3 id="confirmTitle">Please Confirm</h3>
+    <p style="margin-bottom:18px;" id="confirmMessage"></p>
     <div class="pin-actions">
       <button class="pin-cancel" id="confirmCancelBtn">Cancel</button>
-      <button class="pin-unlock" id="confirmSubmitBtn">Submit Picks</button>
+      <button class="pin-unlock" id="confirmActionBtn">Confirm</button>
     </div>
   </div>
 </div>
@@ -685,12 +707,14 @@ const weekBreakdown = document.getElementById('weekBreakdown');
 const myLinkLine = document.getElementById('myLinkLine');
 const chartSection = document.getElementById('chartSection');
 const chartNote = document.getElementById('chartNote');
-const chartScroll = document.getElementById('chartScroll');
-const chartTable = document.getElementById('chartTable');
+const chartCards = document.getElementById('chartCards');
+const chartLegend = document.getElementById('chartLegend');
 const confirmOverlay = document.getElementById('confirmOverlay');
-const confirmWeekLabel = document.getElementById('confirmWeekLabel');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmMessage = document.getElementById('confirmMessage');
 const confirmCancelBtn = document.getElementById('confirmCancelBtn');
-const confirmSubmitBtn = document.getElementById('confirmSubmitBtn');
+const confirmActionBtn = document.getElementById('confirmActionBtn');
+const resetWeekBtn = document.getElementById('resetWeekBtn');
 
 let myLocked = false;
 
@@ -957,21 +981,22 @@ function updateSubmitUI(){
   }
 }
 
-// Shows the "confirm submit" modal and resolves true/false with the
-// person's choice.
-function askConfirmSubmit(){
+// Generic confirm dialog — resolves true/false with the person's choice.
+function askConfirm({title, message, actionLabel}){
   return new Promise((resolve)=>{
-    confirmWeekLabel.textContent = WEEKS[currentWeek].label;
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = message;
+    confirmActionBtn.textContent = actionLabel;
     confirmOverlay.classList.add('show');
 
     function cleanup(result){
       confirmOverlay.classList.remove('show');
-      confirmSubmitBtn.onclick = null;
+      confirmActionBtn.onclick = null;
       confirmCancelBtn.onclick = null;
       resolve(result);
     }
 
-    confirmSubmitBtn.onclick = () => cleanup(true);
+    confirmActionBtn.onclick = () => cleanup(true);
     confirmCancelBtn.onclick = () => cleanup(false);
   });
 }
@@ -989,7 +1014,11 @@ async function submitPicks(){
   const isFinal = count === games.length && games.length > 0;
 
   if(isFinal){
-    const confirmed = await askConfirmSubmit();
+    const confirmed = await askConfirm({
+      title: 'Confirm Your Picks',
+      message: `You're about to submit your picks for ${WEEKS[currentWeek].label}. Once submitted, your picks are final and cannot be changed. Please review your selections before continuing.`,
+      actionLabel: 'Submit Picks'
+    });
     if(!confirmed) return;
   }else{
     statusLine.textContent = `You've only picked ${count} of ${games.length} games. Saved so far — come back any time to finish and submit.`;
@@ -1061,7 +1090,8 @@ async function loadPicksChart(){
   if(!currentUser || !myLocked){
     chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
     chartNote.style.display = 'block';
-    chartScroll.style.display = 'none';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
     return;
   }
 
@@ -1075,7 +1105,8 @@ async function loadPicksChart(){
     if(!res.ok){
       chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
       chartNote.style.display = 'block';
-      chartScroll.style.display = 'none';
+      chartLegend.style.display = 'none';
+      chartCards.style.display = 'none';
       return;
     }
     const data = await res.json();
@@ -1083,10 +1114,15 @@ async function loadPicksChart(){
   }catch(e){
     chartNote.textContent = 'Could not load everyone\'s picks — try again shortly.';
     chartNote.style.display = 'block';
-    chartScroll.style.display = 'none';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
   }
 }
 
+// Each game gets its own card so nothing scrolls sideways on a phone.
+// Picks are color-coded by which side of the matchup someone chose
+// (away vs. home), so agreement/disagreement is visible at a glance
+// without having to read every name.
 function renderPicksChart(allPicks){
   const games = WEEKS[currentWeek].games;
   const submittedNames = FAMILY.filter(n => allPicks[n]);
@@ -1094,38 +1130,50 @@ function renderPicksChart(allPicks){
   if(submittedNames.length === 0){
     chartNote.textContent = 'No one else has submitted yet — check back later.';
     chartNote.style.display = 'block';
-    chartScroll.style.display = 'none';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
     return;
   }
 
   chartNote.style.display = 'none';
-  chartScroll.style.display = 'block';
-
-  let html = '<thead><tr><th>Game</th>';
-  submittedNames.forEach(name=>{
-    html += `<th>${name}</th>`;
-  });
-  html += '</tr></thead><tbody>';
+  chartLegend.style.display = 'flex';
+  chartCards.style.display = 'block';
+  chartCards.innerHTML = '';
 
   games.forEach(g=>{
-    html += `<tr><td class="chart-game">${g.away} @ ${g.home}</td>`;
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+
+    const header = document.createElement('div');
+    header.className = 'chart-card-header';
+    header.innerHTML = `<span class="chart-dot away"></span>${g.away}<span class="vs">at</span><span class="chart-dot home"></span>${g.home}`;
+    card.appendChild(header);
+
+    const pillRow = document.createElement('div');
+    pillRow.className = 'chart-pills';
+
     submittedNames.forEach(name=>{
       const pick = allPicks[name][g.id];
-      const winner = results[g.id];
-      let cls = 'chart-pick';
-      let label = pick || '—';
-      if(pick && winner){
-        cls += winner === pick ? ' correct' : ' wrong';
-      }else if(!winner && pick){
-        cls += ' pending';
-      }
-      html += `<td class="${cls}">${label}</td>`;
-    });
-    html += '</tr>';
-  });
+      if(!pick) return;
 
-  html += '</tbody>';
-  chartTable.innerHTML = html;
+      const side = pick === g.away ? 'away' : 'home';
+      const winner = results[g.id];
+      let cls = `chart-pill ${side}`;
+      let mark = '';
+      if(winner){
+        if(winner === pick){ mark = ' <span class="mark">✓</span>'; }
+        else{ cls += ' wrong'; mark = ' <span class="mark">✕</span>'; }
+      }
+
+      const pill = document.createElement('span');
+      pill.className = cls;
+      pill.innerHTML = `${name}${mark}`;
+      pillRow.appendChild(pill);
+    });
+
+    card.appendChild(pillRow);
+    chartCards.appendChild(card);
+  });
 }
 
 // --- Admin: enter results ---
@@ -1165,6 +1213,48 @@ async function unlockCommissioner(){
     }
   }
 }
+
+// Wipes every pick, lock, and result for the current week — for testing,
+// or restarting a week that was set up wrong. Requires a typed
+// confirmation since it can't be undone.
+resetWeekBtn.onclick = async () => {
+  const pin = localStorage.getItem('commissioner_pin');
+  const weekLabel = WEEKS[currentWeek].label;
+  const confirmed = await askConfirm({
+    title: 'Reset This Week?',
+    message: `This clears every submitted pick, lock, and result for ${weekLabel} — for everyone. This cannot be undone. Are you sure you want to continue?`,
+    actionLabel: 'Reset Week'
+  });
+  if(!confirmed) return;
+
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'resetWeek', week: currentWeek, pin })
+    });
+    if(res.status === 401){
+      localStorage.removeItem('commissioner_pin');
+      showToast('Commissioner PIN no longer valid — reopen the panel to re-enter it');
+      adminOpen = false;
+      adminPanel.classList.remove('show');
+      return;
+    }
+    if(!res.ok) throw new Error('failed');
+
+    results = {};
+    picks = {};
+    myLocked = false;
+    renderGames();
+    renderAdminGames();
+    updateSubmitUI();
+    loadReveal();
+    loadPicksChart();
+    showToast(`${weekLabel} reset for everyone`);
+  }catch(e){
+    showToast('Could not reset the week — try again');
+  }
+};
 
 adminToggleBtn.onclick = async () => {
   if(!adminOpen){
