@@ -266,48 +266,6 @@
     font-family:inherit;
     padding:0;
   }
-  .links-panel{
-    margin-top:12px;
-    border-top:1px solid var(--line);
-    padding-top:8px;
-  }
-  .links-row{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    padding:10px 0;
-    border-bottom:1px solid var(--line);
-  }
-  .links-row:last-child{border-bottom:none;}
-  .links-row .link-name{
-    font-weight:700;
-    font-size:15px;
-    width:70px;
-    flex-shrink:0;
-  }
-  .links-row .link-text{
-    flex:1;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-    color:#5B6B60;
-    font-size:13px;
-  }
-  .copy-btn{
-    font-family:inherit;
-    font-size:13px;
-    font-weight:700;
-    padding:8px 12px;
-    border-radius:6px;
-    border:2px solid var(--line);
-    background:var(--paper);
-    color:var(--ink);
-    cursor:pointer;
-    white-space:nowrap;
-    flex-shrink:0;
-  }
-
   .admin-toggle{
     margin-top:26px;
     text-align:center;
@@ -424,6 +382,60 @@
     z-index:10;
   }
   .toast.show{opacity:1;}
+
+  /* PIN modal */
+  .pin-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(28,43,57,0.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:30;
+    padding:20px;
+  }
+  .pin-overlay.show{display:flex;}
+  .pin-card{
+    background:var(--white);
+    border-radius:12px;
+    padding:26px 22px;
+    max-width:320px;
+    width:100%;
+    text-align:center;
+  }
+  .pin-card h3{font-size:19px;margin-bottom:8px;}
+  .pin-card p{font-size:14px;color:#5B6B60;margin:0 0 16px;}
+  .pin-card input{
+    font-size:26px;
+    letter-spacing:8px;
+    text-align:center;
+    width:100%;
+    padding:12px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    margin-bottom:10px;
+    font-family:inherit;
+  }
+  .pin-error{
+    color:var(--red);
+    font-size:13px;
+    margin:-2px 0 14px;
+    display:none;
+  }
+  .pin-error.show{display:block;}
+  .pin-actions{display:flex;gap:10px;}
+  .pin-actions button{
+    flex:1;
+    font-family:inherit;
+    font-size:15px;
+    font-weight:700;
+    padding:12px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+  }
+  .pin-unlock{background:var(--field);color:var(--white);}
+  .pin-cancel{background:var(--paper);color:var(--ink);border:2px solid var(--line);}
 </style>
 </head>
 <body>
@@ -451,8 +463,6 @@
       <h2>Who's picking?</h2>
       <div class="who-grid" id="whoGrid"></div>
       <div class="standings-note" id="myLinkLine" style="display:none;margin-top:14px;"></div>
-      <button class="text-btn" id="showLinksBtn" style="margin-top:14px;">Get personal links for everyone</button>
-      <div class="links-panel" id="linksPanel" style="display:none;"></div>
     </div>
 
     <div class="status-line" id="statusLine"></div>
@@ -490,7 +500,7 @@
     <div class="standings-note">1 point for each correct pick. Updates as results are entered.</div>
     <div class="standings-table" id="standingsTable"></div>
     <button class="submit-btn" id="backupBtn" style="margin-top:18px;">Download season backup (.csv)</button>
-    <div class="standings-note">Saves a copy of every pick and every result to your device — keep this safe in case the app ever goes down.</div>
+    <div class="standings-note">Saves game results and everyone's weekly scores to your device. It does not include anyone's individual picks, since those stay private.</div>
 
     <div class="week-breakdown">
       <h3>By week</h3>
@@ -502,38 +512,52 @@
 
 <div class="toast" id="toast">Picks saved!</div>
 
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-card">
+    <h3 id="pinTitle">Enter PIN</h3>
+    <p id="pinSub">Ask them for their PIN if you don't know it.</p>
+    <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="pinInput" autocomplete="off">
+    <div class="pin-error" id="pinError">Wrong PIN — try again.</div>
+    <div class="pin-actions">
+      <button class="pin-cancel" id="pinCancelBtn">Cancel</button>
+      <button class="pin-unlock" id="pinUnlockBtn">Unlock</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------------------------------------------------------------------
 // Storage layer: talks to /api/storage (backed by Upstash Redis on
-// Vercel) instead of the Claude-artifact-only window.storage API.
-// Same method shapes as before (key, shared) so the app logic below
-// didn't need to change — the "shared" flag is accepted but ignored,
-// since on a real deployment there's only one shared database anyway.
+// Vercel). Keys starting with "picks:" are PIN-protected server-side —
+// the pin is checked inside api/storage.js, not just hidden in this
+// page, so someone can't bypass it by reading the page source.
 // ---------------------------------------------------------------------
 window.storage = {
-  async get(key){
-    const res = await fetch(`/api/storage?key=${encodeURIComponent(key)}`);
+  async get(key, pin){
+    let url = `/api/storage?key=${encodeURIComponent(key)}`;
+    if(pin) url += `&pin=${encodeURIComponent(pin)}`;
+    const res = await fetch(url);
     if(res.status === 404) return null;
-    if(!res.ok) throw new Error('storage get failed: ' + res.status);
+    if(!res.ok){
+      const err = new Error('storage get failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   },
-  async set(key, value){
+  async set(key, value, pin){
+    const body = { key, value };
+    if(pin) body.pin = pin;
     const res = await fetch('/api/storage', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ key, value })
+      body: JSON.stringify(body)
     });
-    if(!res.ok) throw new Error('storage set failed: ' + res.status);
-    return res.json();
-  },
-  async delete(key){
-    const res = await fetch(`/api/storage?key=${encodeURIComponent(key)}`, { method:'DELETE' });
-    if(!res.ok) throw new Error('storage delete failed: ' + res.status);
-    return res.json();
-  },
-  async list(prefix){
-    const res = await fetch(`/api/storage?prefix=${encodeURIComponent(prefix || '')}`);
-    if(!res.ok) throw new Error('storage list failed: ' + res.status);
+    if(!res.ok){
+      const err = new Error('storage set failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   }
 };
@@ -569,7 +593,6 @@ let currentUser = null;
 let picks = {};
 let results = {};
 let adminOpen = false;
-let linksOpen = false;
 
 const weekPicker = document.getElementById('weekPicker');
 const whoGrid = document.getElementById('whoGrid');
@@ -589,13 +612,86 @@ const viewPicks = document.getElementById('viewPicks');
 const viewStandings = document.getElementById('viewStandings');
 const standingsTable = document.getElementById('standingsTable');
 const weekBreakdown = document.getElementById('weekBreakdown');
-const showLinksBtn = document.getElementById('showLinksBtn');
-const linksPanel = document.getElementById('linksPanel');
+const myLinkLine = document.getElementById('myLinkLine');
 
 function showToast(msg){
   toast.textContent = msg;
   toast.classList.add('show');
   setTimeout(()=>toast.classList.remove('show'), 2200);
+}
+
+// --- PIN handling ---
+// PINs are stored on this device (localStorage) once entered correctly,
+// so a person doesn't have to retype it every visit on their own phone.
+// The actual right/wrong check always happens on the server.
+
+function storedPin(name){
+  return localStorage.getItem('pin_' + name);
+}
+function setStoredPin(name, pin){
+  localStorage.setItem('pin_' + name, pin);
+}
+function clearStoredPin(name){
+  localStorage.removeItem('pin_' + name);
+}
+
+function askForPin(title, showError){
+  return new Promise((resolve)=>{
+    const overlay = document.getElementById('pinOverlay');
+    const titleEl = document.getElementById('pinTitle');
+    const input = document.getElementById('pinInput');
+    const error = document.getElementById('pinError');
+    const unlockBtn = document.getElementById('pinUnlockBtn');
+    const cancelBtn = document.getElementById('pinCancelBtn');
+
+    titleEl.textContent = title;
+    input.value = '';
+    error.classList.toggle('show', !!showError);
+    overlay.classList.add('show');
+    setTimeout(()=>input.focus(), 50);
+
+    function cleanup(result){
+      overlay.classList.remove('show');
+      unlockBtn.onclick = null;
+      cancelBtn.onclick = null;
+      input.onkeydown = null;
+      resolve(result);
+    }
+
+    unlockBtn.onclick = () => cleanup(input.value.trim());
+    cancelBtn.onclick = () => cleanup(null);
+    input.onkeydown = (e) => { if(e.key === 'Enter') cleanup(input.value.trim()); };
+  });
+}
+
+// Prompts for a PIN (reusing a stored one if we have it) until the
+// server accepts it or the person cancels. Loads that person's picks
+// on success.
+async function unlockUser(name){
+  let pin = storedPin(name);
+  let showError = false;
+
+  while(true){
+    if(!pin){
+      pin = await askForPin(`${name}'s PIN`, showError);
+      if(pin === null) return false;
+    }
+    try{
+      const result = await window.storage.get(`picks:week${currentWeek}:${name}`, pin);
+      picks = result ? JSON.parse(result.value) : {};
+      setStoredPin(name, pin);
+      return true;
+    }catch(e){
+      if(e.status === 401){
+        clearStoredPin(name);
+        pin = null;
+        showError = true;
+        continue;
+      }
+      showToast('Could not reach the server — try again');
+      return false;
+    }
+  }
 }
 
 function populateWeekPicker(){
@@ -633,63 +729,26 @@ function renderWho(){
   });
 }
 
-// --- Personal links panel ---
-
-showLinksBtn.onclick = () => {
-  linksOpen = !linksOpen;
-  linksPanel.style.display = linksOpen ? 'block' : 'none';
-  showLinksBtn.textContent = linksOpen ? 'Hide personal links' : 'Get personal links for everyone';
-  if(linksOpen) renderLinksPanel();
-};
-
-function renderLinksPanel(){
-  linksPanel.innerHTML = '';
-  const base = window.location.origin + window.location.pathname;
-  FAMILY.forEach(name=>{
-    const url = base + '?user=' + encodeURIComponent(name);
-    const row = document.createElement('div');
-    row.className = 'links-row';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'link-name';
-    nameEl.textContent = name;
-
-    const textEl = document.createElement('span');
-    textEl.className = 'link-text';
-    textEl.textContent = url;
-
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = 'Copy';
-    btn.onclick = async () => {
-      try{
-        await navigator.clipboard.writeText(url);
-        btn.textContent = 'Copied!';
-        setTimeout(()=>{ btn.textContent = 'Copy'; }, 1500);
-      }catch(e){
-        showToast('Could not copy — long-press the link to copy it');
-      }
-    };
-
-    row.appendChild(nameEl);
-    row.appendChild(textEl);
-    row.appendChild(btn);
-    linksPanel.appendChild(row);
-  });
-}
-
 async function loadPicksForUser(){
+  const pin = storedPin(currentUser);
+  if(!pin){ picks = {}; return; }
   try{
-    const result = await window.storage.get(`picks:week${currentWeek}:${currentUser}`, true);
+    const result = await window.storage.get(`picks:week${currentWeek}:${currentUser}`, pin);
     picks = result ? JSON.parse(result.value) : {};
   }catch(e){
+    if(e.status === 401){
+      clearStoredPin(currentUser);
+      showToast('Your PIN changed — reselect your name to re-enter it');
+      currentUser = null;
+      renderWho();
+    }
     picks = {};
   }
 }
 
 async function loadResults(){
   try{
-    const result = await window.storage.get(`results:week${currentWeek}`, true);
+    const result = await window.storage.get(`results:week${currentWeek}`);
     results = result ? JSON.parse(result.value) : {};
   }catch(e){
     results = {};
@@ -697,19 +756,26 @@ async function loadResults(){
 }
 
 async function selectUser(name, fromLink){
+  const unlocked = await unlockUser(name);
+  if(!unlocked){
+    currentUser = null;
+    renderWho();
+    submitBtn.disabled = true;
+    myLinkLine.style.display = 'none';
+    updateProgress();
+    return;
+  }
+
   currentUser = name;
   renderWho();
   submitBtn.disabled = false;
   statusLine.classList.remove('show');
 
-  const myLinkLine = document.getElementById('myLinkLine');
   const personalUrl = window.location.origin + window.location.pathname + '?user=' + encodeURIComponent(name);
   myLinkLine.innerHTML = `Bookmark <a href="${personalUrl}">your personal link</a> to open straight to your picks next time.`;
   myLinkLine.style.display = 'block';
 
   if(!fromLink) history.replaceState(null, '', '?user=' + encodeURIComponent(name));
-
-  await loadPicksForUser();
 
   const games = WEEKS[currentWeek].games;
   if(Object.keys(picks).length === games.length){
@@ -781,19 +847,34 @@ function updateProgress(){
 
 async function submitPicks(){
   if(!currentUser) return;
+  const pin = storedPin(currentUser);
+  if(!pin){
+    showToast('Select your name again to unlock your picks');
+    return;
+  }
+
   const games = WEEKS[currentWeek].games;
   const count = Object.keys(picks).length;
   if(count < games.length){
     statusLine.textContent = `You've only picked ${count} of ${games.length} games. Save anyway, or finish picking every game first.`;
     statusLine.classList.add('show');
   }
+
   try{
-    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), true);
+    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), pin);
+    // Public progress count only — never the actual team choices — so the
+    // "who's submitted" list can work without exposing anyone's picks.
+    await window.storage.set(`progress:week${currentWeek}:${currentUser}`, String(count));
     showToast('Picks saved!');
     statusLine.classList.remove('show');
     loadReveal();
   }catch(e){
-    showToast('Something went wrong saving — try again');
+    if(e.status === 401){
+      clearStoredPin(currentUser);
+      showToast('Your PIN changed — reselect your name to re-enter it');
+    }else{
+      showToast('Something went wrong saving — try again');
+    }
   }
 }
 
@@ -801,25 +882,64 @@ async function loadReveal(){
   revealList.innerHTML = '';
   const games = WEEKS[currentWeek].games;
   for(const name of FAMILY){
-    let done = false;
+    let count = 0;
     try{
-      const result = await window.storage.get(`picks:week${currentWeek}:${name}`, true);
-      if(result){
-        const p = JSON.parse(result.value);
-        done = Object.keys(p).length === games.length;
-      }
-    }catch(e){ /* not submitted yet */ }
+      const result = await window.storage.get(`progress:week${currentWeek}:${name}`);
+      count = result ? (parseInt(result.value, 10) || 0) : 0;
+    }catch(e){ count = 0; }
 
+    const done = count === games.length && games.length > 0;
     const row = document.createElement('div');
     row.className = 'reveal-row';
-    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${done?'done':''}">${done ? 'Submitted ✓' : 'Not yet'}</span>`;
+    const status = done ? 'Submitted ✓' : (count > 0 ? `${count} of ${games.length} picked` : 'Not yet');
+    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${done?'done':''}">${status}</span>`;
     revealList.appendChild(row);
   }
 }
 
 // --- Admin: enter results ---
+// The whole panel is gated behind a separate commissioner PIN, checked
+// server-side the same way as everyone's individual pick PINs.
 
-adminToggleBtn.onclick = () => {
+async function unlockCommissioner(){
+  let pin = localStorage.getItem('commissioner_pin');
+  let showError = false;
+
+  while(true){
+    if(!pin){
+      pin = await askForPin('Commissioner PIN', showError);
+      if(pin === null) return false;
+    }
+    try{
+      const res = await fetch('/api/storage', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'verifyCommissionerPin', pin })
+      });
+      if(res.ok){
+        localStorage.setItem('commissioner_pin', pin);
+        return true;
+      }
+      if(res.status === 401){
+        localStorage.removeItem('commissioner_pin');
+        pin = null;
+        showError = true;
+        continue;
+      }
+      showToast('Could not reach the server — try again');
+      return false;
+    }catch(e){
+      showToast('Could not reach the server — try again');
+      return false;
+    }
+  }
+}
+
+adminToggleBtn.onclick = async () => {
+  if(!adminOpen){
+    const unlocked = await unlockCommissioner();
+    if(!unlocked) return;
+  }
   adminOpen = !adminOpen;
   adminPanel.classList.toggle('show', adminOpen);
   if(adminOpen) renderAdminGames();
@@ -852,10 +972,28 @@ function renderAdminGames(){
   });
 }
 
+// Setting a result goes through a special server action that recomputes
+// everyone's score internally — raw picks never travel back to this page.
 async function setResult(gameId, team){
-  results[gameId] = team;
+  const pin = localStorage.getItem('commissioner_pin');
   try{
-    await window.storage.set(`results:week${currentWeek}`, JSON.stringify(results), true);
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'setResult', week: currentWeek, gameId, team, pin })
+    });
+    if(res.status === 401){
+      localStorage.removeItem('commissioner_pin');
+      showToast('Commissioner PIN no longer valid — reopen the panel to re-enter it');
+      adminOpen = false;
+      adminPanel.classList.remove('show');
+      renderAdminGames();
+      renderGames();
+      return;
+    }
+    if(!res.ok) throw new Error('failed');
+    const data = await res.json();
+    results = data.results;
     showToast('Result saved');
   }catch(e){
     showToast('Could not save result — try again');
@@ -879,6 +1017,8 @@ function switchTab(which){
 }
 
 // --- Standings ---
+// Reads only the public per-week score numbers the server computed —
+// never anyone's actual picks.
 
 async function renderStandings(){
   standingsTable.innerHTML = '<div class="standings-row"><span class="standings-name">Loading…</span></div>';
@@ -886,30 +1026,16 @@ async function renderStandings(){
 
   const totals = {};
   FAMILY.forEach(n => totals[n] = 0);
-  const perWeek = {}; // week -> {name: correct}
+  const perWeek = {};
 
   for(const wk of Object.keys(WEEKS)){
-    let weekResults = {};
-    try{
-      const r = await window.storage.get(`results:week${wk}`, true);
-      weekResults = r ? JSON.parse(r.value) : {};
-    }catch(e){ weekResults = {}; }
-
     perWeek[wk] = {};
-
     for(const name of FAMILY){
-      let userPicks = {};
-      try{
-        const p = await window.storage.get(`picks:week${wk}:${name}`, true);
-        userPicks = p ? JSON.parse(p.value) : {};
-      }catch(e){ userPicks = {}; }
-
       let correct = 0;
-      Object.keys(weekResults).forEach(gameId=>{
-        if(userPicks[gameId] && userPicks[gameId] === weekResults[gameId]){
-          correct += 1;
-        }
-      });
+      try{
+        const r = await window.storage.get(`score:week${wk}:${name}`);
+        correct = r ? (parseInt(r.value, 10) || 0) : 0;
+      }catch(e){ correct = 0; }
       totals[name] += correct;
       perWeek[wk][name] = correct;
     }
@@ -944,36 +1070,45 @@ async function renderStandings(){
 }
 
 // --- Backup export ---
+// Only results and public weekly scores — never raw picks, since those
+// stay private permanently, even to the commissioner.
 
 async function downloadBackup(){
-  let rows = [["Week","Game","Away","Home","Winner", ...FAMILY]];
+  let rows = [["Week","Game","Away","Home","Winner"]];
 
   for(const wk of Object.keys(WEEKS)){
     let weekResults = {};
     try{
-      const r = await window.storage.get(`results:week${wk}`, true);
+      const r = await window.storage.get(`results:week${wk}`);
       weekResults = r ? JSON.parse(r.value) : {};
     }catch(e){ weekResults = {}; }
 
-    const userPicksByName = {};
-    for(const name of FAMILY){
-      try{
-        const p = await window.storage.get(`picks:week${wk}:${name}`, true);
-        userPicksByName[name] = p ? JSON.parse(p.value) : {};
-      }catch(e){ userPicksByName[name] = {}; }
-    }
-
     WEEKS[wk].games.forEach(g=>{
-      const row = [
+      rows.push([
         WEEKS[wk].label,
         `${g.away} at ${g.home}`,
         g.away,
         g.home,
-        weekResults[g.id] || "",
-        ...FAMILY.map(name => userPicksByName[name][g.id] || "")
-      ];
-      rows.push(row);
+        weekResults[g.id] || ""
+      ]);
     });
+  }
+
+  rows.push([]);
+  rows.push(["Weekly scores (correct picks)"]);
+  rows.push(["Week", ...FAMILY]);
+
+  for(const wk of Object.keys(WEEKS)){
+    const row = [WEEKS[wk].label];
+    for(const name of FAMILY){
+      let correct = 0;
+      try{
+        const r = await window.storage.get(`score:week${wk}:${name}`);
+        correct = r ? (parseInt(r.value, 10) || 0) : 0;
+      }catch(e){ correct = 0; }
+      row.push(correct);
+    }
+    rows.push(row);
   }
 
   const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(",")).join("\n");
