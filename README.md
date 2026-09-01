@@ -1,7 +1,9 @@
 # Family NFL Pick'em
 
 Same app as before, built to run as a real website instead of a Claude
-artifact, with each person's picks kept private from everyone else.
+artifact. Each person's picks are private *while the week is still open*,
+PIN-protected, and lock in permanently once submitted — after that,
+everyone can see everyone's picks for that week.
 
 ## How storage works
 
@@ -10,11 +12,20 @@ artifact, with each person's picks kept private from everyone else.
 - **Picks are PIN-protected.** Each family member has a short PIN. The
   server checks it on every read/write of that person's picks — it's a real
   server-side check, not just something hidden in the page.
-- Nobody's actual picks are ever exposed to anyone else, including the
-  commissioner. When a game result is entered, the server privately compares
-  everyone's picks to the result and stores only the resulting **score**
-  (a number of correct picks) — never *which* team someone picked. Standings
-  and the CSV backup are both built from these public scores only.
+- **Picks lock in when submitted.** While someone still has games left to
+  pick, they can save and change their picks freely. Once they've picked
+  every game and confirm the "Submit Picks" prompt, the server marks their
+  picks locked (`locked:week{n}:{name}`) and rejects any further changes to
+  them — even a direct API call, not just the button in the UI.
+- **Picks become visible after you submit yours.** Once a person has
+  locked in their own picks for a week, the server will show them everyone
+  else's picks for that same week — but only for people who have *also*
+  locked theirs in; anyone still mid-week stays hidden until they submit
+  too. This still requires that person's own PIN to prove it's really them
+  asking.
+- Standings and the CSV backup use the server-computed weekly **scores**
+  (a count of correct picks), not the raw picks, so historical data stays
+  compact either way.
 
 ## Deploy it
 
@@ -53,13 +64,11 @@ artifact, with each person's picks kept private from everyone else.
 ## Giving everyone their own link
 
 Each family member's link is `yoursite.vercel.app?user=Name` (e.g.
-`?user=Dad`). Build each one yourself and send it to that person —
-there's no in-app list of everyone's links, since showing all six in one
-place would let anyone see who else has a link, even without their PIN.
-Send each person their link *and*, separately, their PIN. The first time
-they open their link they'll be asked for the PIN; after that it's
-remembered on their device (stored in that browser only), so they won't
-need to re-enter it every visit.
+`?user=Dad`). Build each one yourself and send it to that person — there's
+no in-app list of everyone's links. Send each person their link *and*,
+separately, their PIN. The first time they open their link they'll be
+asked for the PIN; after that it's remembered on their device (stored in
+that browser only), so they won't need to re-enter it every visit.
 
 If someone's PIN is ever compromised (e.g., a shared family device), just
 change it in `PICK_PINS`, redeploy, and their old saved PIN on every device
@@ -81,11 +90,13 @@ into a `.env.local` file.
 - This is a lightweight PIN gate, not enterprise-grade authentication —
   PINs are short and stored in plaintext in an environment variable. It's
   a real, server-enforced barrier that stops family members from casually
-  looking at (or editing) each other's picks, but don't reuse this pattern
-  for anything more sensitive than a family pick'em pool.
-- Game results (`results:week{n}`) and progress/scores are intentionally
-  public — everyone needs to see final results and standings. Only the
-  specific team each person picked is ever kept private.
+  looking at (or editing) each other's picks before they've submitted, but
+  don't reuse this pattern for anything more sensitive than a family
+  pick'em pool.
+- Game results (`results:week{n}`), progress counts, and lock status
+  (`locked:week{n}:{name}`) are intentionally public — everyone needs to
+  see final results and who's submitted. Only the *specific teams* someone
+  picked stay gated, and only until that person submits.
 - The season schedule lives in the `WEEKS` object near the top of the
   `<script>` in `index.html` — add a new week's games there each week and
   redeploy.
