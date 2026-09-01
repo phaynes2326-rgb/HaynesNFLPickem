@@ -159,6 +159,26 @@ export default async function handler(req, res) {
         return res.status(200).json({ picks: allPicks });
       }
 
+      // Commissioner wipes a week clean — picks, locks, progress, scores,
+      // and results — so testing or a mistaken week can start fresh.
+      if (body && body.action === 'resetWeek') {
+        if (!commissionerPinValid(body.pin)) {
+          return res.status(401).json({ error: 'wrong PIN' });
+        }
+        const { week } = body;
+        if (!week) return res.status(400).json({ error: 'week is required' });
+
+        const keys = [`results:week${week}`];
+        for (const name of FAMILY) {
+          keys.push(`picks:week${week}:${name}`);
+          keys.push(`locked:week${week}:${name}`);
+          keys.push(`progress:week${week}:${name}`);
+          keys.push(`score:week${week}:${name}`);
+        }
+        await Promise.all(keys.map((k) => redis.del(k)));
+        return res.status(200).json({ ok: true, week });
+      }
+
       const { key, value, pin, lock } = body || {};
       if (!key) return res.status(400).json({ error: 'key is required' });
 
