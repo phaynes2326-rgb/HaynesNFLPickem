@@ -414,8 +414,8 @@
     border-radius:50%;
     flex-shrink:0;
   }
-  .chart-dot.away{background:#2563EB;}
-  .chart-dot.home{background:#F97316;}
+  .chart-dot.away{background:var(--field);}
+  .chart-dot.home{background:var(--gold);}
   .chart-pills{
     display:flex;
     flex-wrap:wrap;
@@ -430,8 +430,8 @@
     font-size:14px;
     font-weight:700;
   }
-  .chart-pill.away{background:#2563EB;color:var(--ink);}
-  .chart-pill.home{background:#F97316;color:var(--ink);}
+  .chart-pill.away{background:var(--field);color:var(--white);}
+  .chart-pill.home{background:var(--gold);color:var(--ink);}
   .chart-pill.wrong{opacity:0.5;}
   .chart-pill .mark{font-weight:900;}
 
@@ -657,9 +657,15 @@ window.storage = {
 const FAMILY = ["Ace","Cisco","Dad","Lena","Mom","Tonio"];
 
 // Add a new week here each time the schedule updates.
+// opensAt: when the site should start defaulting to this week. Currently
+// set to Tuesday 10 AM ET, one day before Week 1's Wednesday opener (two
+// days before a normal Thursday-opening week like Week 2). To switch the
+// whole app to a Wednesday cutover instead, just add one day to each
+// opensAt date below (e.g. "2026-09-08" -> "2026-09-09").
 const WEEKS = {
   "1": {
     label: "Week 1",
+    opensAt: "2026-09-08T10:00:00-04:00",
     games: [
       {id:"g1", away:"New England Patriots", home:"Seattle Seahawks", time:"Wed Sep 9, 8:20 PM ET"},
       {id:"g2", away:"San Francisco 49ers", home:"Los Angeles Rams", time:"Thu Sep 10, 8:35 PM ET"},
@@ -681,28 +687,45 @@ const WEEKS = {
   },
   "2": {
     label: "Week 2",
+    opensAt: "2026-09-15T10:00:00-04:00",
     games: [
-      {id:"g17", away:"Detroit Lions", home:"Buffalo Bills", time:"Thu Sep 17, 8:15 PM ET"},
-      {id:"g18", away:"Carolina Panthers", home:"Atlanta Falcons", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g19", away:"New Orleans Saints", home:"Baltimore Ravens", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g20", away:"Minnesota Vikings", home:"Chicago Bears", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g21", away:"Cincinnati Bengals", home:"Houston Texans", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g22", away:"Pittsburgh Steelers", home:"New England Patriots", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g23", away:"Green Bay Packers", home:"New York Jets", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g24", away:"Cleveland Browns", home:"Tampa Bay Buccaneers", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g25", away:"Philadelphia Eagles", home:"Tennessee Titans", time:"Sun Sep 20, 1:00 PM ET"},
-      {id:"g26", away:"Jacksonville Jaguars", home:"Denver Broncos", time:"Sun Sep 20, 4:05 PM ET"},
-      {id:"g27", away:"Las Vegas Raiders", home:"Los Angeles Chargers", time:"Sun Sep 20, 4:05 PM ET"},
-      {id:"g28", away:"Seattle Seahawks", home:"Arizona Cardinals", time:"Sun Sep 20, 4:25 PM ET"},
-      {id:"g29", away:"Washington Commanders", home:"Dallas Cowboys", time:"Sun Sep 20, 4:25 PM ET"},
-      {id:"g30", away:"Miami Dolphins", home:"San Francisco 49ers", time:"Sun Sep 20, 4:25 PM ET"},
-      {id:"g31", away:"Indianapolis Colts", home:"Kansas City Chiefs", time:"Sun Sep 20, 8:20 PM ET"},
-      {id:"g32", away:"New York Giants", home:"Los Angeles Rams", time:"Mon Sep 21, 8:15 PM ET"}
+      {id:"g1", away:"Detroit Lions", home:"Buffalo Bills", time:"Thu Sep 17, 8:15 PM ET"},
+      {id:"g2", away:"Carolina Panthers", home:"Atlanta Falcons", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g3", away:"New Orleans Saints", home:"Baltimore Ravens", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g4", away:"Minnesota Vikings", home:"Chicago Bears", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g5", away:"Cincinnati Bengals", home:"Houston Texans", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g6", away:"Pittsburgh Steelers", home:"New England Patriots", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g7", away:"Green Bay Packers", home:"New York Jets", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g8", away:"Cleveland Browns", home:"Tampa Bay Buccaneers", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g9", away:"Philadelphia Eagles", home:"Tennessee Titans", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g10", away:"Jacksonville Jaguars", home:"Denver Broncos", time:"Sun Sep 20, 4:05 PM ET"},
+      {id:"g11", away:"Las Vegas Raiders", home:"Los Angeles Chargers", time:"Sun Sep 20, 4:05 PM ET"},
+      {id:"g12", away:"Seattle Seahawks", home:"Arizona Cardinals", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g13", away:"Washington Commanders", home:"Dallas Cowboys", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g14", away:"Miami Dolphins", home:"San Francisco 49ers", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g15", away:"Indianapolis Colts", home:"Kansas City Chiefs", time:"Sun Sep 20, 8:20 PM ET"},
+      {id:"g16", away:"New York Giants", home:"Los Angeles Rams", time:"Mon Sep 21, 8:15 PM ET"}
     ]
   }
 };
 
-let currentWeek = Object.keys(WEEKS)[0];
+// Picks the week whose Wednesday-10am-ET cutover has already passed, using
+// the latest one that qualifies. Before Week 1's cutover, defaults to
+// Week 1 so the site never opens on nothing.
+function getCurrentWeekKey(){
+  const now = new Date();
+  const weekKeys = Object.keys(WEEKS).sort((a,b)=> Number(a) - Number(b));
+  let current = weekKeys[0];
+  weekKeys.forEach(wk=>{
+    const opensAt = WEEKS[wk].opensAt;
+    if(opensAt && now >= new Date(opensAt)){
+      current = wk;
+    }
+  });
+  return current;
+}
+
+let currentWeek = getCurrentWeekKey();
 let currentUser = null;
 let picks = {};
 let results = {};
