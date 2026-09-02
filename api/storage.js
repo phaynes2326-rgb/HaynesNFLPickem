@@ -1,226 +1,1521 @@
-import { Redis } from '@upstash/redis';
-
-// Works with either the Vercel-injected names (KV_REST_API_URL / KV_REST_API_TOKEN)
-// or the raw Upstash names (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN).
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-  automaticDeserialization: false, // keep values as plain strings
-});
-
-// Keep this in sync with the FAMILY array in index.html.
-const FAMILY = ["Ace", "Cisco", "Dad", "Lena", "Mom", "Tonio"];
-
-function getPins() {
-  try {
-    return JSON.parse(process.env.PICK_PINS || '{}');
-  } catch (e) {
-    return {};
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0">
+<title>Haynes NFL Pick'em</title>
+<style>
+  :root{
+    --paper:#F3F1EC;
+    --ink:#1C2B39;
+    --field:#2E5339;
+    --field-dark:#213C29;
+    --gold:#C99A2E;
+    --line:#D8D2C4;
+    --white:#FFFFFF;
+    --red:#8C3B2E;
   }
-}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family: "Source Sans Pro", "Segoe UI", Arial, sans-serif;
+    font-size:18px;
+    line-height:1.45;
+    padding:0 0 40px 0;
+  }
+  h1,h2,h3{
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight:700;
+    margin:0;
+  }
+  .masthead{
+    background:var(--field);
+    color:var(--paper);
+    padding:26px 20px 0;
+    text-align:left;
+    border-bottom:6px solid var(--gold);
+  }
+  .masthead h1{
+    font-size:clamp(26px,6vw,38px);
+    letter-spacing:0.3px;
+  }
+  .masthead p{
+    margin:8px 0 18px;
+    font-size:16px;
+    color:#DDE6DD;
+  }
+  .tabs{
+    display:flex;
+    gap:0;
+  }
+  .tab-btn{
+    flex:1;
+    font-family:inherit;
+    font-size:16px;
+    font-weight:700;
+    padding:14px 8px;
+    border:none;
+    background:transparent;
+    color:#B9C9BB;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+  }
+  .tab-btn.active{
+    color:var(--white);
+    border-bottom:3px solid var(--gold);
+  }
+  .wrap{
+    max-width:640px;
+    margin:0 auto;
+    padding:0 18px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
 
-// picks:week{n}:{name} -> {name}
-function nameFromPicksKey(key) {
-  const parts = key.split(':');
-  if (parts.length !== 3 || parts[0] !== 'picks') return null;
-  return parts[2];
-}
+  .week-select{
+    margin-top:20px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .week-select label{font-weight:700;font-size:15px;}
+  .week-select select{
+    font-size:17px;
+    font-family:inherit;
+    padding:10px 12px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--white);
+    color:var(--ink);
+  }
 
-function isProtectedKey(key) {
-  return typeof key === 'string' && key.startsWith('picks:');
-}
+  .who{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    margin-top:18px;
+    padding:20px;
+  }
+  .who h2{font-size:20px;margin-bottom:14px;}
+  .who-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:10px;
+  }
+  @media (max-width:420px){
+    .who-grid{grid-template-columns:repeat(2,1fr);}
+  }
+  .who-btn{
+    font-size:19px;
+    font-family:inherit;
+    padding:16px 8px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    font-weight:600;
+  }
+  .who-btn.active{
+    background:var(--field);
+    border-color:var(--field);
+    color:var(--white);
+  }
+  .status-line{
+    margin-top:18px;
+    padding:14px 16px;
+    border-radius:8px;
+    background:#EFEAD9;
+    border:1px solid var(--line);
+    font-size:16px;
+    display:none;
+  }
+  .status-line.show{display:block;}
+  .games{
+    margin-top:26px;
+  }
+  .games h2{
+    font-size:20px;
+    margin-bottom:4px;
+  }
+  .games .sub{
+    color:#5B6B60;
+    font-size:15px;
+    margin-bottom:16px;
+  }
+  .game{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .game-time{
+    font-size:14px;
+    color:#7A7568;
+    margin-bottom:10px;
+    font-weight:600;
+  }
+  .teams{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .team-btn{
+    font-size:18px;
+    font-family:inherit;
+    font-weight:700;
+    padding:18px 10px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    min-height:64px;
+    position:relative;
+  }
+  .team-btn.selected{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:var(--ink);
+  }
+  .team-btn.winner{
+    outline:3px solid var(--field);
+    outline-offset:-3px;
+  }
+  .team-btn.correct::after{
+    content:"✓";
+    position:absolute;
+    top:4px;
+    right:8px;
+    color:var(--field);
+    font-weight:900;
+  }
+  .team-btn.wrong::after{
+    content:"✕";
+    position:absolute;
+    top:4px;
+    right:8px;
+    color:var(--red);
+    font-weight:900;
+  }
+  .at{
+    text-align:center;
+    font-size:13px;
+    color:#9B9788;
+    margin:6px 0;
+  }
+  .submit-bar{
+    position:sticky;
+    bottom:0;
+    background:var(--paper);
+    padding:16px 0 0;
+    margin-top:10px;
+  }
+  .submit-btn{
+    width:100%;
+    font-size:20px;
+    font-weight:700;
+    font-family:inherit;
+    padding:18px;
+    border-radius:10px;
+    border:none;
+    background:var(--field);
+    color:var(--white);
+    cursor:pointer;
+  }
+  .submit-btn:disabled{
+    background:#A7ADA2;
+    cursor:not-allowed;
+  }
+  .progress{
+    text-align:center;
+    font-size:14px;
+    color:#5B6B60;
+    margin-top:8px;
+  }
+  .reveal{
+    margin-top:30px;
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px;
+  }
+  .reveal h2{font-size:19px;margin-bottom:12px;}
+  .reveal-row{
+    display:flex;
+    justify-content:space-between;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+    font-size:16px;
+  }
+  .reveal-row:last-child{border-bottom:none;}
+  .reveal-name{font-weight:700;}
+  .reveal-status{color:#5B6B60;}
+  .reveal-status.done{color:var(--field);}
 
-// picks:week{n}:{name} -> {n}
-function weekFromPicksKey(key) {
-  const parts = key.split(':');
-  if (parts.length !== 3 || parts[0] !== 'picks') return null;
-  const wk = parts[1];
-  return wk.startsWith('week') ? wk.slice(4) : null;
-}
+  .text-btn{
+    background:none;
+    border:none;
+    color:#7A7568;
+    font-size:14px;
+    text-decoration:underline;
+    cursor:pointer;
+    font-family:inherit;
+    padding:0;
+  }
+  .admin-toggle{
+    margin-top:26px;
+    text-align:center;
+  }
+  .admin-toggle button{
+    background:none;
+    border:none;
+    color:#7A7568;
+    font-size:14px;
+    text-decoration:underline;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .admin-panel{
+    margin-top:14px;
+    background:#EFEAD9;
+    border:1px dashed #B8A96F;
+    border-radius:10px;
+    padding:18px;
+    display:none;
+  }
+  .admin-panel.show{display:block;}
+  .admin-panel h3{font-size:17px;margin-bottom:6px;}
+  .admin-panel .sub{color:#7A7568;font-size:14px;margin-bottom:14px;}
+  .admin-game{
+    margin-bottom:10px;
+  }
+  .admin-game .label{font-size:14px;font-weight:700;margin-bottom:6px;}
+  .admin-teams{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  .admin-team-btn{
+    font-size:15px;
+    font-family:inherit;
+    font-weight:600;
+    padding:10px 6px;
+    border-radius:6px;
+    border:2px solid var(--line);
+    background:var(--white);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .admin-team-btn.set{
+    background:var(--field);
+    border-color:var(--field);
+    color:var(--white);
+  }
 
-function pinIsValid(key, suppliedPin) {
-  const name = nameFromPicksKey(key);
-  if (!name) return false;
-  const expected = getPins()[name];
-  return !!expected && String(suppliedPin || '') === String(expected);
-}
+  /* Standings */
+  .standings-table{
+    margin-top:20px;
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .standings-row{
+    display:flex;
+    align-items:center;
+    padding:16px 18px;
+    border-bottom:1px solid var(--line);
+    gap:14px;
+  }
+  .standings-row:last-child{border-bottom:none;}
+  .standings-rank{
+    font-family:Georgia,serif;
+    font-weight:700;
+    font-size:20px;
+    color:#9B9788;
+    width:26px;
+  }
+  .standings-name{
+    flex:1;
+    font-weight:700;
+    font-size:18px;
+  }
+  .standings-score{
+    font-weight:700;
+    font-size:20px;
+    color:var(--field);
+  }
+  .standings-note{
+    color:#5B6B60;
+    font-size:15px;
+    margin-top:14px;
+  }
+  .week-breakdown{
+    margin-top:26px;
+  }
+  .week-breakdown h3{font-size:16px;margin-bottom:10px;}
+  .week-row{
+    display:flex;
+    justify-content:space-between;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+    font-size:15px;
+  }
 
-function commissionerPinValid(suppliedPin) {
-  const expected = process.env.COMMISSIONER_PIN;
-  return !!expected && String(suppliedPin || '') === String(expected);
+  /* Everyone's picks chart */
+  .chart-note{
+    color:#5B6B60;
+    font-size:15px;
+    margin:4px 0 14px;
+  }
+  .chart-legend{
+    display:flex;
+    gap:18px;
+    font-size:13px;
+    color:#5B6B60;
+    margin-bottom:14px;
+  }
+  .chart-legend span{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .chart-card{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 16px;
+    margin-bottom:12px;
+  }
+  .chart-card-header{
+    font-weight:700;
+    font-size:15px;
+    margin-bottom:12px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px;
+    line-height:1.3;
+  }
+  .chart-card-header .vs{
+    color:#9B9788;
+    font-weight:400;
+    font-size:13px;
+    margin:0 2px;
+  }
+    /* InLine dots*/
+  .chart-team{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    white-space:nowrap;
 }
+  .chart-dot{
+    display:inline-block;
+    width:11px;
+    height:11px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .chart-dot.away{background:#2563EB;}
+  .chart-dot.home{background:#F97316;}
+  .chart-pills{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .chart-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:8px 13px;
+    border-radius:999px;
+    font-size:14px;
+    font-weight:700;
+  }
+  .chart-pill.away{background:#2563EB;color:var(--white);}
+  .chart-pill.home{background:#F97316;color:var(--ink);}
+  .chart-pill.wrong{opacity:0.5;}
+  .chart-pill .mark{font-weight:900;}
 
-// Server-side only: reads a person's raw picks directly, without a PIN.
-// Only ever called internally to compute a score, never returned to a client.
-async function computeCorrectCount(name, week, weekResults) {
-  const raw = await redis.get(`picks:week${week}:${name}`);
-  const picks = raw ? JSON.parse(raw) : {};
-  let correct = 0;
-  Object.keys(weekResults).forEach((gameId) => {
-    if (picks[gameId] && picks[gameId] === weekResults[gameId]) correct += 1;
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:26px;
+    transform:translateX(-50%);
+    background:var(--field-dark);
+    color:var(--white);
+    padding:14px 22px;
+    border-radius:8px;
+    font-size:16px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease;
+    z-index:10;
+  }
+  .toast.show{opacity:1;}
+
+  /* PIN modal */
+  .pin-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(28,43,57,0.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:30;
+    padding:20px;
+  }
+  .pin-overlay.show{display:flex;}
+  .pin-card{
+    background:var(--white);
+    border-radius:12px;
+    padding:26px 22px;
+    max-width:320px;
+    width:100%;
+    text-align:center;
+  }
+  .pin-card h3{font-size:19px;margin-bottom:8px;}
+  .pin-card p{font-size:14px;color:#5B6B60;margin:0 0 16px;}
+  .pin-card input{
+    font-size:26px;
+    letter-spacing:8px;
+    text-align:center;
+    width:100%;
+    padding:12px;
+    border-radius:8px;
+    border:2px solid var(--line);
+    margin-bottom:10px;
+    font-family:inherit;
+  }
+  .pin-error{
+    color:var(--red);
+    font-size:13px;
+    margin:-2px 0 14px;
+    display:none;
+  }
+  .pin-error.show{display:block;}
+  .pin-actions{display:flex;gap:10px;}
+  .pin-actions button{
+    flex:1;
+    font-family:inherit;
+    font-size:15px;
+    font-weight:700;
+    padding:12px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+  }
+  .pin-unlock{background:var(--field);color:var(--white);}
+  .pin-cancel{background:var(--paper);color:var(--ink);border:2px solid var(--line);}
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <h1>Haynes NFL Pick'em</h1>
+  <p>2026-2027 Season</p>
+  <div class="tabs">
+    <button class="tab-btn active" id="tabPicksBtn">Make Picks</button>
+    <button class="tab-btn" id="tabStandingsBtn">Standings</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- PICKS VIEW -->
+  <div class="view active" id="viewPicks">
+
+    <div class="week-select">
+      <label for="weekPicker">Week</label>
+      <select id="weekPicker"></select>
+    </div>
+
+    <div class="who">
+      <h2>Who's picking?</h2>
+      <div class="who-grid" id="whoGrid"></div>
+      <div class="standings-note" id="myLinkLine" style="display:none;margin-top:14px;"></div>
+    </div>
+
+    <div class="status-line" id="statusLine"></div>
+
+    <div class="games">
+      <h2>This week's games</h2>
+      <div class="sub">Tap the team you think wins each game.</div>
+      <div id="gameList"></div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="submit-btn" id="submitBtn" disabled>Save my picks</button>
+      <div class="progress" id="progressLine">Pick a name to start</div>
+    </div>
+
+    <div class="reveal">
+      <h2>Who's submitted this week</h2>
+      <div id="revealList"></div>
+    </div>
+
+    <div class="reveal" id="chartSection">
+      <h2>Everyone's Picks</h2>
+      <div class="chart-note" id="chartNote">Submit your own picks to see everyone else's.</div>
+      <div class="chart-legend" id="chartLegend" style="display:none;">
+        <span><span class="chart-dot away"></span>Picked the away team</span>
+        <span><span class="chart-dot home"></span>Picked the home team</span>
+      </div>
+      <div id="chartCards" style="display:none;"></div>
+    </div>
+
+    <div class="admin-toggle">
+      <button id="adminToggleBtn">Commissioner: enter final results</button>
+    </div>
+    <div class="admin-panel" id="adminPanel">
+      <h3>Enter winners for Week <span id="adminWeekLabel"></span></h3>
+      <div class="sub">Tap the team that won each game. This updates everyone's standings.</div>
+      <div id="adminGameList"></div>
+      <button class="text-btn" id="resetWeekBtn" style="margin-top:16px;color:var(--red);">Reset this week for everyone</button>
+    </div>
+
+  </div>
+
+  <!-- STANDINGS VIEW -->
+  <div class="view" id="viewStandings">
+    <h2 style="margin-top:20px;font-size:22px;">Season Standings</h2>
+    <div class="standings-note">1 point for each correct pick. Updates as results are entered.</div>
+    <div class="standings-table" id="standingsTable"></div>
+    <button class="submit-btn" id="backupBtn" style="margin-top:18px;">Download season backup (.csv)</button>
+    <div class="standings-note">Saves game results and everyone's weekly scores to your device. It does not include anyone's individual picks, since those stay private.</div>
+
+    <div class="week-breakdown">
+      <h3>By week</h3>
+      <div id="weekBreakdown"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">Picks saved!</div>
+
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-card">
+    <h3 id="pinTitle">Enter PIN</h3>
+    <p id="pinSub">Ask them for their PIN if you don't know it.</p>
+    <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="pinInput" autocomplete="off">
+    <div class="pin-error" id="pinError">Wrong PIN — try again.</div>
+    <div class="pin-actions">
+      <button class="pin-cancel" id="pinCancelBtn">Cancel</button>
+      <button class="pin-unlock" id="pinUnlockBtn">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<div class="pin-overlay" id="confirmOverlay">
+  <div class="pin-card">
+    <h3 id="confirmTitle">Please Confirm</h3>
+    <p style="margin-bottom:18px;" id="confirmMessage"></p>
+    <div class="pin-actions">
+      <button class="pin-cancel" id="confirmCancelBtn">Cancel</button>
+      <button class="pin-unlock" id="confirmActionBtn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------
+// Storage layer: talks to /api/storage (backed by Upstash Redis on
+// Vercel). Keys starting with "picks:" are PIN-protected server-side —
+// the pin is checked inside api/storage.js, not just hidden in this
+// page, so someone can't bypass it by reading the page source.
+// ---------------------------------------------------------------------
+window.storage = {
+  async get(key, pin){
+    let url = `/api/storage?key=${encodeURIComponent(key)}`;
+    if(pin) url += `&pin=${encodeURIComponent(pin)}`;
+    const res = await fetch(url);
+    if(res.status === 404) return null;
+    if(!res.ok){
+      const err = new Error('storage get failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
+  async set(key, value, pin, lock){
+    const body = { key, value };
+    if(pin) body.pin = pin;
+    if(lock) body.lock = true;
+    const res = await fetch('/api/storage', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(!res.ok){
+      const err = new Error('storage set failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+};
+
+const FAMILY = ["Ace","Cisco","Dad","Lena","Mom","Tonio"];
+
+// Add a new week here each time the schedule updates.
+// opensAt: when the site should start defaulting to this week. Currently
+// set to Tuesday 10 AM ET, one day before Week 1's Wednesday opener (two
+// days before a normal Thursday-opening week like Week 2). To switch the
+// whole app to a Wednesday cutover instead, just add one day to each
+// opensAt date below (e.g. "2026-09-08" -> "2026-09-09").
+const WEEKS = {
+  "1": {
+    label: "Week 1",
+    opensAt: "2026-09-08T10:00:00-04:00",
+    games: [
+      {id:"g1", away:"New England Patriots", home:"Seattle Seahawks", time:"Wed Sep 9, 8:20 PM ET"},
+      {id:"g2", away:"San Francisco 49ers", home:"Los Angeles Rams", time:"Thu Sep 10, 8:35 PM ET"},
+      {id:"g3", away:"Chicago Bears", home:"Carolina Panthers", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g4", away:"Baltimore Ravens", home:"Indianapolis Colts", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g5", away:"Atlanta Falcons", home:"Pittsburgh Steelers", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g6", away:"Cleveland Browns", home:"Jacksonville Jaguars", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g7", away:"Tampa Bay Buccaneers", home:"Cincinnati Bengals", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g8", away:"New York Jets", home:"Tennessee Titans", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g9", away:"New Orleans Saints", home:"Detroit Lions", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g10", away:"Buffalo Bills", home:"Houston Texans", time:"Sun Sep 13, 1:00 PM ET"},
+      {id:"g11", away:"Arizona Cardinals", home:"Los Angeles Chargers", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g12", away:"Green Bay Packers", home:"Minnesota Vikings", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g13", away:"Miami Dolphins", home:"Las Vegas Raiders", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g14", away:"Washington Commanders", home:"Philadelphia Eagles", time:"Sun Sep 13, 4:25 PM ET"},
+      {id:"g15", away:"Dallas Cowboys", home:"New York Giants", time:"Sun Sep 13, 8:20 PM ET"},
+      {id:"g16", away:"Denver Broncos", home:"Kansas City Chiefs", time:"Mon Sep 14, 8:15 PM ET"}
+    ]
+  },
+  "2": {
+    label: "Week 2",
+    opensAt: "2026-09-15T10:00:00-04:00",
+    games: [
+      {id:"g1", away:"Detroit Lions", home:"Buffalo Bills", time:"Thu Sep 17, 8:15 PM ET"},
+      {id:"g2", away:"Carolina Panthers", home:"Atlanta Falcons", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g3", away:"New Orleans Saints", home:"Baltimore Ravens", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g4", away:"Minnesota Vikings", home:"Chicago Bears", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g5", away:"Cincinnati Bengals", home:"Houston Texans", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g6", away:"Pittsburgh Steelers", home:"New England Patriots", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g7", away:"Green Bay Packers", home:"New York Jets", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g8", away:"Cleveland Browns", home:"Tampa Bay Buccaneers", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g9", away:"Philadelphia Eagles", home:"Tennessee Titans", time:"Sun Sep 20, 1:00 PM ET"},
+      {id:"g10", away:"Jacksonville Jaguars", home:"Denver Broncos", time:"Sun Sep 20, 4:05 PM ET"},
+      {id:"g11", away:"Las Vegas Raiders", home:"Los Angeles Chargers", time:"Sun Sep 20, 4:05 PM ET"},
+      {id:"g12", away:"Seattle Seahawks", home:"Arizona Cardinals", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g13", away:"Washington Commanders", home:"Dallas Cowboys", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g14", away:"Miami Dolphins", home:"San Francisco 49ers", time:"Sun Sep 20, 4:25 PM ET"},
+      {id:"g15", away:"Indianapolis Colts", home:"Kansas City Chiefs", time:"Sun Sep 20, 8:20 PM ET"},
+      {id:"g16", away:"New York Giants", home:"Los Angeles Rams", time:"Mon Sep 21, 8:15 PM ET"}
+    ]
+  }
+};
+
+// Picks the week whose Wednesday-10am-ET cutover has already passed, using
+// the latest one that qualifies. Before Week 1's cutover, defaults to
+// Week 1 so the site never opens on nothing.
+function getCurrentWeekKey(){
+  const now = new Date();
+  const weekKeys = Object.keys(WEEKS).sort((a,b)=> Number(a) - Number(b));
+  let current = weekKeys[0];
+  weekKeys.forEach(wk=>{
+    const opensAt = WEEKS[wk].opensAt;
+    if(opensAt && now >= new Date(opensAt)){
+      current = wk;
+    }
   });
-  return correct;
+  return current;
 }
 
-export default async function handler(req, res) {
-  try {
-    if (!process.env.KV_REST_API_URL && !process.env.UPSTASH_REDIS_REST_URL) {
-      return res.status(500).json({
-        error:
-          'No Redis database connected. Add the "Upstash for Redis" integration in the Vercel dashboard (Storage tab), then redeploy.',
-      });
+let currentWeek = getCurrentWeekKey();
+let currentUser = null;
+let picks = {};
+let results = {};
+let adminOpen = false;
+
+const weekPicker = document.getElementById('weekPicker');
+const whoGrid = document.getElementById('whoGrid');
+const gameList = document.getElementById('gameList');
+const submitBtn = document.getElementById('submitBtn');
+const progressLine = document.getElementById('progressLine');
+const statusLine = document.getElementById('statusLine');
+const revealList = document.getElementById('revealList');
+const toast = document.getElementById('toast');
+const adminToggleBtn = document.getElementById('adminToggleBtn');
+const adminPanel = document.getElementById('adminPanel');
+const adminWeekLabel = document.getElementById('adminWeekLabel');
+const adminGameList = document.getElementById('adminGameList');
+const tabPicksBtn = document.getElementById('tabPicksBtn');
+const tabStandingsBtn = document.getElementById('tabStandingsBtn');
+const viewPicks = document.getElementById('viewPicks');
+const viewStandings = document.getElementById('viewStandings');
+const standingsTable = document.getElementById('standingsTable');
+const weekBreakdown = document.getElementById('weekBreakdown');
+const myLinkLine = document.getElementById('myLinkLine');
+const chartSection = document.getElementById('chartSection');
+const chartNote = document.getElementById('chartNote');
+const chartCards = document.getElementById('chartCards');
+const chartLegend = document.getElementById('chartLegend');
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmMessage = document.getElementById('confirmMessage');
+const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+const confirmActionBtn = document.getElementById('confirmActionBtn');
+const resetWeekBtn = document.getElementById('resetWeekBtn');
+
+let myLocked = false;
+
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'), 2200);
+}
+
+// --- PIN handling ---
+// PINs are stored on this device (localStorage) once entered correctly,
+// so a person doesn't have to retype it every visit on their own phone.
+// The actual right/wrong check always happens on the server.
+
+function storedPin(name){
+  return localStorage.getItem('pin_' + name);
+}
+function setStoredPin(name, pin){
+  localStorage.setItem('pin_' + name, pin);
+}
+function clearStoredPin(name){
+  localStorage.removeItem('pin_' + name);
+}
+
+function askForPin(title, showError){
+  return new Promise((resolve)=>{
+    const overlay = document.getElementById('pinOverlay');
+    const titleEl = document.getElementById('pinTitle');
+    const input = document.getElementById('pinInput');
+    const error = document.getElementById('pinError');
+    const unlockBtn = document.getElementById('pinUnlockBtn');
+    const cancelBtn = document.getElementById('pinCancelBtn');
+
+    titleEl.textContent = title;
+    input.value = '';
+    error.classList.toggle('show', !!showError);
+    overlay.classList.add('show');
+    setTimeout(()=>input.focus(), 50);
+
+    function cleanup(result){
+      overlay.classList.remove('show');
+      unlockBtn.onclick = null;
+      cancelBtn.onclick = null;
+      input.onkeydown = null;
+      resolve(result);
     }
 
-    if (req.method === 'GET') {
-      const { key, prefix, pin } = req.query;
+    unlockBtn.onclick = () => cleanup(input.value.trim());
+    cancelBtn.onclick = () => cleanup(null);
+    input.onkeydown = (e) => { if(e.key === 'Enter') cleanup(input.value.trim()); };
+  });
+}
 
-      if (typeof prefix === 'string') {
-        const keys = await redis.keys(`${prefix}*`);
-        return res.status(200).json({ keys, prefix });
-      }
+// Prompts for a PIN (reusing a stored one if we have it) until the
+// server accepts it or the person cancels. Loads that person's picks
+// on success.
+async function unlockUser(name){
+  let pin = storedPin(name);
+  let showError = false;
 
-      if (!key) return res.status(400).json({ error: 'key is required' });
-
-      if (isProtectedKey(key) && !pinIsValid(key, pin)) {
-        return res.status(401).json({ error: 'wrong or missing PIN' });
-      }
-
-      const value = await redis.get(key);
-      if (value === null || value === undefined) {
-        return res.status(404).json({ error: 'not found' });
-      }
-      return res.status(200).json({ key, value });
+  while(true){
+    if(!pin){
+      pin = await askForPin(`${name}'s PIN`, showError);
+      if(pin === null) return false;
     }
-
-    if (req.method === 'POST') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
-      // Lets the client verify a commissioner PIN before opening the results
-      // panel, without doing anything else yet.
-      if (body && body.action === 'verifyCommissionerPin') {
-        if (!commissionerPinValid(body.pin)) {
-          return res.status(401).json({ error: 'wrong PIN' });
-        }
-        return res.status(200).json({ ok: true });
+    try{
+      const result = await window.storage.get(`picks:week${currentWeek}:${name}`, pin);
+      picks = result ? JSON.parse(result.value) : {};
+      setStoredPin(name, pin);
+      return true;
+    }catch(e){
+      if(e.status === 401){
+        clearStoredPin(name);
+        pin = null;
+        showError = true;
+        continue;
       }
-
-      // Commissioner sets a game result. Recomputes everyone's score for that
-      // week server-side, so raw picks never have to be sent back to any client.
-      if (body && body.action === 'setResult') {
-        if (!commissionerPinValid(body.pin)) {
-          return res.status(401).json({ error: 'wrong PIN' });
-        }
-        const { week, gameId, team } = body;
-        if (!week || !gameId || !team) {
-          return res.status(400).json({ error: 'week, gameId, team are required' });
-        }
-        const resultsKey = `results:week${week}`;
-        const existingRaw = await redis.get(resultsKey);
-        const weekResults = existingRaw ? JSON.parse(existingRaw) : {};
-        weekResults[gameId] = team;
-        await redis.set(resultsKey, JSON.stringify(weekResults));
-
-        const scores = {};
-        for (const name of FAMILY) {
-          const correct = await computeCorrectCount(name, week, weekResults);
-          scores[name] = correct;
-          await redis.set(`score:week${week}:${name}`, String(correct));
-        }
-
-        return res.status(200).json({ results: weekResults, scores });
-      }
-
-      // Once someone has submitted their own picks for a week, they can see
-      // everyone else's picks for that week — but only other people who have
-      // also actually submitted (locked) theirs. Requires the requester's own
-      // PIN, same as any other read of their picks.
-      if (body && body.action === 'getWeekPicks') {
-        const { week, name, pin } = body;
-        if (!week || !name) {
-          return res.status(400).json({ error: 'week and name are required' });
-        }
-        const requesterKey = `picks:week${week}:${name}`;
-        if (!pinIsValid(requesterKey, pin)) {
-          return res.status(401).json({ error: 'wrong or missing PIN' });
-        }
-        const requesterLocked = await redis.get(`locked:week${week}:${name}`);
-        if (!requesterLocked) {
-          return res.status(403).json({ error: 'submit your own picks first' });
-        }
-
-        const allPicks = {};
-        for (const person of FAMILY) {
-          const locked = await redis.get(`locked:week${week}:${person}`);
-          if (locked) {
-            const raw = await redis.get(`picks:week${week}:${person}`);
-            allPicks[person] = raw ? JSON.parse(raw) : {};
-          }
-        }
-        return res.status(200).json({ picks: allPicks });
-      }
-
-      // Commissioner wipes a week clean — picks, locks, progress, scores,
-      // and results — so testing or a mistaken week can start fresh.
-      if (body && body.action === 'resetWeek') {
-        if (!commissionerPinValid(body.pin)) {
-          return res.status(401).json({ error: 'wrong PIN' });
-        }
-        const { week } = body;
-        if (!week) return res.status(400).json({ error: 'week is required' });
-
-        const keys = [`results:week${week}`];
-        for (const name of FAMILY) {
-          keys.push(`picks:week${week}:${name}`);
-          keys.push(`locked:week${week}:${name}`);
-          keys.push(`progress:week${week}:${name}`);
-          keys.push(`score:week${week}:${name}`);
-        }
-        await Promise.all(keys.map((k) => redis.del(k)));
-        return res.status(200).json({ ok: true, week });
-      }
-
-      const { key, value, pin, lock } = body || {};
-      if (!key) return res.status(400).json({ error: 'key is required' });
-
-      if (isProtectedKey(key)) {
-        if (!pinIsValid(key, pin)) {
-          return res.status(401).json({ error: 'wrong or missing PIN' });
-        }
-        const name = nameFromPicksKey(key);
-        const week = weekFromPicksKey(key);
-        const alreadyLocked = week && (await redis.get(`locked:week${week}:${name}`));
-        if (alreadyLocked) {
-          return res.status(403).json({ error: 'picks already submitted and locked' });
-        }
-      }
-
-      await redis.set(key, value);
-
-      if (isProtectedKey(key) && lock) {
-        const name = nameFromPicksKey(key);
-        const week = weekFromPicksKey(key);
-        if (week) await redis.set(`locked:week${week}:${name}`, '1');
-      }
-
-      return res.status(200).json({ key, value, locked: !!lock });
+      showToast('Could not reach the server — try again');
+      return false;
     }
-
-    if (req.method === 'DELETE') {
-      const { key, pin } = req.query;
-      if (!key) return res.status(400).json({ error: 'key is required' });
-
-      if (isProtectedKey(key) && !pinIsValid(key, pin)) {
-        return res.status(401).json({ error: 'wrong or missing PIN' });
-      }
-
-      await redis.del(key);
-      return res.status(200).json({ key, deleted: true });
-    }
-
-    res.setHeader('Allow', 'GET, POST, DELETE');
-    return res.status(405).json({ error: 'method not allowed' });
-  } catch (err) {
-    console.error('storage api error:', err);
-    return res.status(500).json({ error: 'storage error' });
   }
 }
+
+function populateWeekPicker(){
+  weekPicker.innerHTML = '';
+  Object.keys(WEEKS).forEach(wk=>{
+    const opt = document.createElement('option');
+    opt.value = wk;
+    opt.textContent = WEEKS[wk].label;
+    weekPicker.appendChild(opt);
+  });
+  weekPicker.value = currentWeek;
+}
+
+weekPicker.onchange = async () => {
+  currentWeek = weekPicker.value;
+  picks = {};
+  myLocked = false;
+  if(currentUser){
+    await loadPicksForUser();
+    await loadLockStatus();
+  }
+  await loadResults();
+  renderGames();
+  renderAdminGames();
+  updateSubmitUI();
+  loadReveal();
+  loadPicksChart();
+};
+
+function renderWho(){
+  whoGrid.innerHTML = '';
+  FAMILY.forEach(name=>{
+    const btn = document.createElement('button');
+    btn.className = 'who-btn' + (currentUser===name ? ' active':'');
+    btn.textContent = name;
+    btn.onclick = () => selectUser(name);
+    whoGrid.appendChild(btn);
+  });
+}
+
+async function loadPicksForUser(){
+  const pin = storedPin(currentUser);
+  if(!pin){ picks = {}; return; }
+  try{
+    const result = await window.storage.get(`picks:week${currentWeek}:${currentUser}`, pin);
+    picks = result ? JSON.parse(result.value) : {};
+  }catch(e){
+    if(e.status === 401){
+      clearStoredPin(currentUser);
+      showToast('Your PIN changed — reselect your name to re-enter it');
+      currentUser = null;
+      renderWho();
+    }
+    picks = {};
+  }
+}
+
+async function loadResults(){
+  try{
+    const result = await window.storage.get(`results:week${currentWeek}`);
+    results = result ? JSON.parse(result.value) : {};
+  }catch(e){
+    results = {};
+  }
+}
+
+async function loadLockStatus(){
+  try{
+    const result = await window.storage.get(`locked:week${currentWeek}:${currentUser}`);
+    myLocked = !!result;
+  }catch(e){
+    myLocked = false;
+  }
+}
+
+async function selectUser(name, fromLink){
+  const unlocked = await unlockUser(name);
+  if(!unlocked){
+    currentUser = null;
+    renderWho();
+    submitBtn.disabled = true;
+    myLinkLine.style.display = 'none';
+    updateSubmitUI();
+    return;
+  }
+
+  currentUser = name;
+  renderWho();
+  statusLine.classList.remove('show');
+
+  const personalUrl = window.location.origin + window.location.pathname + '?user=' + encodeURIComponent(name);
+  myLinkLine.innerHTML = `Bookmark <a href="${personalUrl}">your personal link</a> to open straight to your picks next time.`;
+  myLinkLine.style.display = 'block';
+
+  if(!fromLink) history.replaceState(null, '', '?user=' + encodeURIComponent(name));
+
+  await loadLockStatus();
+
+  if(myLocked){
+    statusLine.textContent = `Your picks for this week are submitted and locked in. Good luck!`;
+    statusLine.classList.add('show');
+  }
+
+  renderGames();
+  updateSubmitUI();
+  loadPicksChart();
+}
+
+function renderGames(){
+  gameList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  games.forEach(g=>{
+    const card = document.createElement('div');
+    card.className = 'game';
+
+    const time = document.createElement('div');
+    time.className = 'game-time';
+    time.textContent = g.time;
+    card.appendChild(time);
+
+    const teams = document.createElement('div');
+    teams.className = 'teams';
+
+    [ {side:'away', team:g.away}, {side:'home', team:g.home} ].forEach(t=>{
+      const btn = document.createElement('button');
+      let cls = 'team-btn';
+      if(picks[g.id]===t.team) cls += ' selected';
+      const winner = results[g.id];
+      if(winner){
+        if(picks[g.id]===t.team && winner===t.team) cls += ' correct';
+        else if(picks[g.id]===t.team && winner!==t.team) cls += ' wrong';
+      }
+      btn.className = cls;
+      btn.textContent = t.team;
+      btn.disabled = !currentUser || myLocked;
+      btn.onclick = () => makePick(g.id, t.team);
+      teams.appendChild(btn);
+    });
+
+    const at = document.createElement('div');
+    at.className = 'at';
+    at.textContent = 'at';
+
+    card.appendChild(at);
+    card.appendChild(teams);
+    gameList.appendChild(card);
+  });
+}
+
+function makePick(gameId, team){
+  if(!currentUser || myLocked) return;
+  picks[gameId] = team;
+  renderGames();
+  updateSubmitUI();
+}
+
+function updateSubmitUI(){
+  const games = WEEKS[currentWeek].games;
+  const count = Object.keys(picks).length;
+
+  if(!currentUser){
+    submitBtn.textContent = 'Save my picks';
+    submitBtn.disabled = true;
+    progressLine.textContent = 'Pick a name to start';
+    return;
+  }
+
+  if(myLocked){
+    submitBtn.textContent = 'Picks Submitted';
+    submitBtn.disabled = true;
+    progressLine.textContent = `Your picks are locked in for this week.`;
+    return;
+  }
+
+  progressLine.textContent = `${count} of ${games.length} games picked`;
+
+  if(count === games.length && games.length > 0){
+    submitBtn.textContent = 'Submit Picks';
+    submitBtn.disabled = false;
+  }else{
+    submitBtn.textContent = 'Save my picks';
+    submitBtn.disabled = false;
+  }
+}
+
+// Generic confirm dialog — resolves true/false with the person's choice.
+function askConfirm({title, message, actionLabel}){
+  return new Promise((resolve)=>{
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = message;
+    confirmActionBtn.textContent = actionLabel;
+    confirmOverlay.classList.add('show');
+
+    function cleanup(result){
+      confirmOverlay.classList.remove('show');
+      confirmActionBtn.onclick = null;
+      confirmCancelBtn.onclick = null;
+      resolve(result);
+    }
+
+    confirmActionBtn.onclick = () => cleanup(true);
+    confirmCancelBtn.onclick = () => cleanup(false);
+  });
+}
+
+async function submitPicks(){
+  if(!currentUser || myLocked) return;
+  const pin = storedPin(currentUser);
+  if(!pin){
+    showToast('Select your name again to unlock your picks');
+    return;
+  }
+
+  const games = WEEKS[currentWeek].games;
+  const count = Object.keys(picks).length;
+  const isFinal = count === games.length && games.length > 0;
+
+  if(isFinal){
+    const confirmed = await askConfirm({
+      title: 'Confirm Your Picks',
+      message: `You're about to submit your picks for ${WEEKS[currentWeek].label}. Once submitted, your picks are final and cannot be changed. Please review your selections before continuing.`,
+      actionLabel: 'Submit Picks'
+    });
+    if(!confirmed) return;
+  }else{
+    statusLine.textContent = `You've only picked ${count} of ${games.length} games. Saved so far — come back any time to finish and submit.`;
+    statusLine.classList.add('show');
+  }
+
+  try{
+    await window.storage.set(`picks:week${currentWeek}:${currentUser}`, JSON.stringify(picks), pin, isFinal);
+    // Public progress count only — never the actual team choices — so the
+    // "who's submitted" list can work without exposing anyone's picks.
+    await window.storage.set(`progress:week${currentWeek}:${currentUser}`, String(count));
+
+    if(isFinal){
+      myLocked = true;
+      statusLine.textContent = `Your picks for this week are submitted and locked in. Good luck!`;
+      statusLine.classList.add('show');
+      showToast('Picks submitted!');
+      renderGames();
+      loadPicksChart();
+    }else{
+      statusLine.classList.remove('show');
+      showToast('Picks saved!');
+    }
+
+    updateSubmitUI();
+    loadReveal();
+  }catch(e){
+    if(e.status === 401){
+      clearStoredPin(currentUser);
+      showToast('Your PIN changed — reselect your name to re-enter it');
+    }else if(e.status === 403){
+      myLocked = true;
+      updateSubmitUI();
+      showToast('Your picks were already submitted for this week');
+    }else{
+      showToast('Something went wrong saving — try again');
+    }
+  }
+}
+
+async function loadReveal(){
+  revealList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  for(const name of FAMILY){
+    let count = 0;
+    let locked = false;
+    try{
+      const result = await window.storage.get(`progress:week${currentWeek}:${name}`);
+      count = result ? (parseInt(result.value, 10) || 0) : 0;
+    }catch(e){ count = 0; }
+    try{
+      const lockedResult = await window.storage.get(`locked:week${currentWeek}:${name}`);
+      locked = !!lockedResult;
+    }catch(e){ locked = false; }
+
+    const row = document.createElement('div');
+    row.className = 'reveal-row';
+    const status = locked ? 'Submitted ✓' : (count > 0 ? `${count} of ${games.length} picked` : 'Not yet');
+    row.innerHTML = `<span class="reveal-name">${name}</span><span class="reveal-status ${locked?'done':''}">${status}</span>`;
+    revealList.appendChild(row);
+  }
+}
+
+// --- Everyone's picks chart ---
+// Only loads successfully once the current user has submitted their own
+// picks for the week — enforced server-side, not just hidden client-side.
+
+async function loadPicksChart(){
+  if(!currentUser || !myLocked){
+    chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
+    chartNote.style.display = 'block';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
+    return;
+  }
+
+  const pin = storedPin(currentUser);
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'getWeekPicks', week: currentWeek, name: currentUser, pin })
+    });
+    if(!res.ok){
+      chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
+      chartNote.style.display = 'block';
+      chartLegend.style.display = 'none';
+      chartCards.style.display = 'none';
+      return;
+    }
+    const data = await res.json();
+    renderPicksChart(data.picks || {});
+  }catch(e){
+    chartNote.textContent = 'Could not load everyone\'s picks — try again shortly.';
+    chartNote.style.display = 'block';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
+  }
+}
+
+// Each game gets its own card so nothing scrolls sideways on a phone.
+// Picks are color-coded by which side of the matchup someone chose
+// (away vs. home), so agreement/disagreement is visible at a glance
+// without having to read every name.
+function renderPicksChart(allPicks){
+  const games = WEEKS[currentWeek].games;
+  const submittedNames = FAMILY.filter(n => allPicks[n]);
+
+  if(submittedNames.length === 0){
+    chartNote.textContent = 'No one else has submitted yet — check back later.';
+    chartNote.style.display = 'block';
+    chartLegend.style.display = 'none';
+    chartCards.style.display = 'none';
+    return;
+  }
+
+  chartNote.style.display = 'none';
+  chartLegend.style.display = 'flex';
+  chartCards.style.display = 'block';
+  chartCards.innerHTML = '';
+
+  games.forEach(g=>{
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+
+    const header = document.createElement('div');
+    header.className = 'chart-card-header';
+    header.innerHTML = `<span class="chart-team"><span class="chart-dot away"></span>${g.away}</span><span class="vs">at</span><span class="chart-team"><span class="chart-dot home"></span>${g.home}</span>`;
+    card.appendChild(header);
+
+    const pillRow = document.createElement('div');
+    pillRow.className = 'chart-pills';
+
+    submittedNames.forEach(name=>{
+      const pick = allPicks[name][g.id];
+      if(!pick) return;
+
+      const side = pick === g.away ? 'away' : 'home';
+      const winner = results[g.id];
+      let cls = `chart-pill ${side}`;
+      let mark = '';
+      if(winner){
+        if(winner === pick){ mark = ' <span class="mark">✓</span>'; }
+        else{ cls += ' wrong'; mark = ' <span class="mark">✕</span>'; }
+      }
+
+      const pill = document.createElement('span');
+      pill.className = cls;
+      pill.innerHTML = `${name}${mark}`;
+      pillRow.appendChild(pill);
+    });
+
+    card.appendChild(pillRow);
+    chartCards.appendChild(card);
+  });
+}
+
+// --- Admin: enter results ---
+// The whole panel is gated behind a separate commissioner PIN, checked
+// server-side the same way as everyone's individual pick PINs.
+
+async function unlockCommissioner(){
+  let pin = localStorage.getItem('commissioner_pin');
+  let showError = false;
+
+  while(true){
+    if(!pin){
+      pin = await askForPin('Commissioner PIN', showError);
+      if(pin === null) return false;
+    }
+    try{
+      const res = await fetch('/api/storage', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'verifyCommissionerPin', pin })
+      });
+      if(res.ok){
+        localStorage.setItem('commissioner_pin', pin);
+        return true;
+      }
+      if(res.status === 401){
+        localStorage.removeItem('commissioner_pin');
+        pin = null;
+        showError = true;
+        continue;
+      }
+      showToast('Could not reach the server — try again');
+      return false;
+    }catch(e){
+      showToast('Could not reach the server — try again');
+      return false;
+    }
+  }
+}
+
+// Wipes every pick, lock, and result for the current week — for testing,
+// or restarting a week that was set up wrong. Requires a typed
+// confirmation since it can't be undone.
+resetWeekBtn.onclick = async () => {
+  const pin = localStorage.getItem('commissioner_pin');
+  const weekLabel = WEEKS[currentWeek].label;
+  const confirmed = await askConfirm({
+    title: 'Reset This Week?',
+    message: `This clears every submitted pick, lock, and result for ${weekLabel} — for everyone. This cannot be undone. Are you sure you want to continue?`,
+    actionLabel: 'Reset Week'
+  });
+  if(!confirmed) return;
+
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'resetWeek', week: currentWeek, pin })
+    });
+    if(res.status === 401){
+      localStorage.removeItem('commissioner_pin');
+      showToast('Commissioner PIN no longer valid — reopen the panel to re-enter it');
+      adminOpen = false;
+      adminPanel.classList.remove('show');
+      return;
+    }
+    if(!res.ok) throw new Error('failed');
+
+    results = {};
+    picks = {};
+    myLocked = false;
+    renderGames();
+    renderAdminGames();
+    updateSubmitUI();
+    loadReveal();
+    loadPicksChart();
+    showToast(`${weekLabel} reset for everyone`);
+  }catch(e){
+    showToast('Could not reset the week — try again');
+  }
+};
+
+adminToggleBtn.onclick = async () => {
+  if(!adminOpen){
+    const unlocked = await unlockCommissioner();
+    if(!unlocked) return;
+  }
+  adminOpen = !adminOpen;
+  adminPanel.classList.toggle('show', adminOpen);
+  if(adminOpen) renderAdminGames();
+};
+
+function renderAdminGames(){
+  adminWeekLabel.textContent = WEEKS[currentWeek].label.replace('Week ','');
+  adminGameList.innerHTML = '';
+  const games = WEEKS[currentWeek].games;
+  games.forEach(g=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-game';
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = `${g.away} at ${g.home}`;
+    wrap.appendChild(label);
+
+    const row = document.createElement('div');
+    row.className = 'admin-teams';
+    [g.away, g.home].forEach(team=>{
+      const btn = document.createElement('button');
+      btn.className = 'admin-team-btn' + (results[g.id]===team ? ' set':'');
+      btn.textContent = team;
+      btn.onclick = () => setResult(g.id, team);
+      row.appendChild(btn);
+    });
+    wrap.appendChild(row);
+    adminGameList.appendChild(wrap);
+  });
+}
+
+// Setting a result goes through a special server action that recomputes
+// everyone's score internally — raw picks never travel back to this page.
+async function setResult(gameId, team){
+  const pin = localStorage.getItem('commissioner_pin');
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'setResult', week: currentWeek, gameId, team, pin })
+    });
+    if(res.status === 401){
+      localStorage.removeItem('commissioner_pin');
+      showToast('Commissioner PIN no longer valid — reopen the panel to re-enter it');
+      adminOpen = false;
+      adminPanel.classList.remove('show');
+      renderAdminGames();
+      renderGames();
+      return;
+    }
+    if(!res.ok) throw new Error('failed');
+    const data = await res.json();
+    results = data.results;
+    showToast('Result saved');
+  }catch(e){
+    showToast('Could not save result — try again');
+  }
+  renderAdminGames();
+  renderGames();
+}
+
+// --- Tabs ---
+
+tabPicksBtn.onclick = () => switchTab('picks');
+tabStandingsBtn.onclick = () => switchTab('standings');
+
+function switchTab(which){
+  const isPicks = which === 'picks';
+  tabPicksBtn.classList.toggle('active', isPicks);
+  tabStandingsBtn.classList.toggle('active', !isPicks);
+  viewPicks.classList.toggle('active', isPicks);
+  viewStandings.classList.toggle('active', !isPicks);
+  if(!isPicks) renderStandings();
+}
+
+// --- Standings ---
+// Reads only the public per-week score numbers the server computed —
+// never anyone's actual picks.
+
+async function renderStandings(){
+  standingsTable.innerHTML = '<div class="standings-row"><span class="standings-name">Loading…</span></div>';
+  weekBreakdown.innerHTML = '';
+
+  const totals = {};
+  FAMILY.forEach(n => totals[n] = 0);
+  const perWeek = {};
+
+  for(const wk of Object.keys(WEEKS)){
+    perWeek[wk] = {};
+    for(const name of FAMILY){
+      let correct = 0;
+      try{
+        const r = await window.storage.get(`score:week${wk}:${name}`);
+        correct = r ? (parseInt(r.value, 10) || 0) : 0;
+      }catch(e){ correct = 0; }
+      totals[name] += correct;
+      perWeek[wk][name] = correct;
+    }
+  }
+
+  const sorted = FAMILY.slice().sort((a,b)=> totals[b]-totals[a]);
+
+  standingsTable.innerHTML = '';
+  sorted.forEach((name, i)=>{
+    const row = document.createElement('div');
+    row.className = 'standings-row';
+    row.innerHTML = `<span class="standings-rank">${i+1}</span><span class="standings-name">${name}</span><span class="standings-score">${totals[name]} pts</span>`;
+    standingsTable.appendChild(row);
+  });
+
+  weekBreakdown.innerHTML = '';
+  Object.keys(WEEKS).forEach(wk=>{
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.marginTop = '14px';
+    title.style.fontSize = '15px';
+    title.textContent = WEEKS[wk].label;
+    weekBreakdown.appendChild(title);
+
+    FAMILY.forEach(name=>{
+      const row = document.createElement('div');
+      row.className = 'week-row';
+      row.innerHTML = `<span>${name}</span><span>${perWeek[wk][name] || 0} correct</span>`;
+      weekBreakdown.appendChild(row);
+    });
+  });
+}
+
+// --- Backup export ---
+// Only results and public weekly scores — never raw picks, since those
+// stay private permanently, even to the commissioner.
+
+async function downloadBackup(){
+  let rows = [["Week","Game","Away","Home","Winner"]];
+
+  for(const wk of Object.keys(WEEKS)){
+    let weekResults = {};
+    try{
+      const r = await window.storage.get(`results:week${wk}`);
+      weekResults = r ? JSON.parse(r.value) : {};
+    }catch(e){ weekResults = {}; }
+
+    WEEKS[wk].games.forEach(g=>{
+      rows.push([
+        WEEKS[wk].label,
+        `${g.away} at ${g.home}`,
+        g.away,
+        g.home,
+        weekResults[g.id] || ""
+      ]);
+    });
+  }
+
+  rows.push([]);
+  rows.push(["Weekly scores (correct picks)"]);
+  rows.push(["Week", ...FAMILY]);
+
+  for(const wk of Object.keys(WEEKS)){
+    const row = [WEEKS[wk].label];
+    for(const name of FAMILY){
+      let correct = 0;
+      try{
+        const r = await window.storage.get(`score:week${wk}:${name}`);
+        correct = r ? (parseInt(r.value, 10) || 0) : 0;
+      }catch(e){ correct = 0; }
+      row.push(correct);
+    }
+    rows.push(row);
+  }
+
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `family-pickem-backup-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded');
+}
+
+document.getElementById('backupBtn').onclick = downloadBackup;
+document.getElementById('submitBtn').onclick = submitPicks;
+
+// --- Init ---
+populateWeekPicker();
+renderWho();
+renderGames();
+renderAdminGames();
+updateSubmitUI();
+loadReveal();
+loadResults();
+loadPicksChart();
+
+const urlParams = new URLSearchParams(window.location.search);
+const linkedUser = urlParams.get('user');
+if(linkedUser && FAMILY.includes(linkedUser)){
+  selectUser(linkedUser, true);
+}
+</script>
+
+</body>
+</html>
