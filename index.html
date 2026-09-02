@@ -407,6 +407,13 @@
     font-size:13px;
     margin:0 2px;
   }
+    /* InLine dots*/
+  .chart-team{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    white-space:nowrap;
+}
   .chart-dot{
     display:inline-block;
     width:11px;
@@ -1191,7 +1198,7 @@ function renderPicksChart(allPicks){
 
     const header = document.createElement('div');
     header.className = 'chart-card-header';
-    header.innerHTML = `<span class="chart-dot away"></span>${g.away}<span class="vs">at</span><span class="chart-dot home"></span>${g.home}`;
+    header.innerHTML = `<span class="chart-team"><span class="chart-dot away"></span>${g.away}</span><span class="vs">at</span><span class="chart-team"><span class="chart-dot home"></span>${g.home}</span>`;
     card.appendChild(header);
 
     const pillRow = document.createElement('div');
