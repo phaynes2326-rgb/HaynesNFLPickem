@@ -576,7 +576,8 @@
       <h3>Enter winners for Week <span id="adminWeekLabel"></span></h3>
       <div class="sub">Tap the team that won each game. This updates everyone's standings.</div>
       <div id="adminGameList"></div>
-      <button class="text-btn" id="resetWeekBtn" style="margin-top:16px;color:var(--red);">Reset this week for everyone</button>
+      <button class="text-btn" id="recomputeBtn" style="margin-top:16px;">Recalculate everyone's score for this week</button>
+      <button class="text-btn" id="resetWeekBtn" style="margin-top:10px;color:var(--red);">Reset this week for everyone</button>
     </div>
 
   </div>
@@ -767,6 +768,7 @@ const confirmMessage = document.getElementById('confirmMessage');
 const confirmCancelBtn = document.getElementById('confirmCancelBtn');
 const confirmActionBtn = document.getElementById('confirmActionBtn');
 const resetWeekBtn = document.getElementById('resetWeekBtn');
+const recomputeBtn = document.getElementById('recomputeBtn');
 
 let myLocked = false;
 
@@ -1269,6 +1271,31 @@ async function unlockCommissioner(){
 // Wipes every pick, lock, and result for the current week — for testing,
 // or restarting a week that was set up wrong. Requires a typed
 // confirmation since it can't be undone.
+// Recalculates everyone's score for the current week from scratch — safe
+// to run any time, doesn't touch anyone's picks. Fixes cases like someone
+// submitting after results were already entered.
+recomputeBtn.onclick = async () => {
+  const pin = localStorage.getItem('commissioner_pin');
+  try{
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'recomputeScores', week: currentWeek, pin })
+    });
+    if(res.status === 401){
+      localStorage.removeItem('commissioner_pin');
+      showToast('Commissioner PIN no longer valid — reopen the panel to re-enter it');
+      adminOpen = false;
+      adminPanel.classList.remove('show');
+      return;
+    }
+    if(!res.ok) throw new Error('failed');
+    showToast('Scores recalculated');
+  }catch(e){
+    showToast('Could not recalculate scores — try again');
+  }
+};
+
 resetWeekBtn.onclick = async () => {
   const pin = localStorage.getItem('commissioner_pin');
   const weekLabel = WEEKS[currentWeek].label;
