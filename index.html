@@ -374,6 +374,8 @@
   }
   .chart-legend{
     display:flex;
+    flex-wrap:wrap;
+    align-items:center;
     gap:18px;
     font-size:13px;
     color:#5B6B60;
@@ -384,6 +386,56 @@
     align-items:center;
     gap:6px;
   }
+  /* Compact grid — dense, all games and everyone's picks at once, sized
+     for a single screenshot rather than daily phone browsing. */
+  .chart-scroll{
+    overflow-x:auto;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--white);
+    -webkit-overflow-scrolling:touch;
+  }
+  table.chart-table{
+    border-collapse:collapse;
+    width:100%;
+    font-size:13px;
+  }
+  .chart-table th, .chart-table td{
+    padding:9px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .chart-table thead th{
+    background:var(--field);
+    color:var(--white);
+    font-family:Georgia,serif;
+    font-weight:700;
+    font-size:13px;
+    position:sticky;
+    top:0;
+  }
+  .chart-table tbody tr:nth-child(even){background:#FAF8F2;}
+  .chart-table td.chart-game{
+    font-weight:700;
+    color:var(--ink);
+    position:sticky;
+    left:0;
+    background:inherit;
+    box-shadow:2px 0 0 var(--line);
+  }
+  .chart-table thead th:first-child{
+    position:sticky;
+    left:0;
+    z-index:2;
+  }
+  .chart-table td.grid-pick{
+    font-weight:700;
+  }
+  .chart-table td.grid-pick.away{color:#2563EB;}
+  .chart-table td.grid-pick.home{color:#F97316;}
+  .chart-table td.grid-pick.correct{text-decoration:underline;}
+  .chart-table td.grid-pick.wrong{opacity:0.5;text-decoration:line-through;}
   .chart-card{
     background:var(--white);
     border:1px solid var(--line);
@@ -569,8 +621,12 @@
       <div class="chart-legend" id="chartLegend" style="display:none;">
         <span><span class="chart-dot away"></span>Picked the away team</span>
         <span><span class="chart-dot home"></span>Picked the home team</span>
+        <button class="text-btn" id="chartViewToggle" style="margin-left:auto;">Compact view (for screenshots)</button>
       </div>
       <div id="chartCards" style="display:none;"></div>
+      <div class="chart-scroll" id="chartGridWrap" style="display:none;">
+        <table class="chart-table" id="chartGrid"></table>
+      </div>
     </div>
 
     <div class="admin-toggle">
@@ -766,6 +822,9 @@ const chartSection = document.getElementById('chartSection');
 const chartNote = document.getElementById('chartNote');
 const chartCards = document.getElementById('chartCards');
 const chartLegend = document.getElementById('chartLegend');
+const chartGridWrap = document.getElementById('chartGridWrap');
+const chartGrid = document.getElementById('chartGrid');
+const chartViewToggle = document.getElementById('chartViewToggle');
 const confirmOverlay = document.getElementById('confirmOverlay');
 const confirmTitle = document.getElementById('confirmTitle');
 const confirmMessage = document.getElementById('confirmMessage');
@@ -775,6 +834,8 @@ const resetWeekBtn = document.getElementById('resetWeekBtn');
 const recomputeBtn = document.getElementById('recomputeBtn');
 
 let myLocked = false;
+let chartViewMode = 'cards'; // 'cards' or 'grid'
+let lastPicksData = {};
 
 function showToast(msg){
   toast.textContent = msg;
@@ -1143,13 +1204,21 @@ async function loadReveal(){
 // --- Everyone's picks chart ---
 // Only loads successfully once the current user has submitted their own
 // picks for the week — enforced server-side, not just hidden client-side.
+// Purely a display: nothing here writes to anyone's picks, so switching
+// weeks, toggling views, or just looking at it can never change what
+// anyone already submitted.
+
+function hideChart(message){
+  chartNote.textContent = message;
+  chartNote.style.display = 'block';
+  chartLegend.style.display = 'none';
+  chartCards.style.display = 'none';
+  chartGridWrap.style.display = 'none';
+}
 
 async function loadPicksChart(){
   if(!currentUser || !myLocked){
-    chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
-    chartNote.style.display = 'block';
-    chartLegend.style.display = 'none';
-    chartCards.style.display = 'none';
+    hideChart('Submit your own picks to see everyone else\'s.');
     return;
   }
 
@@ -1161,20 +1230,81 @@ async function loadPicksChart(){
       body: JSON.stringify({ action: 'getWeekPicks', week: currentWeek, name: currentUser, pin })
     });
     if(!res.ok){
-      chartNote.textContent = 'Submit your own picks to see everyone else\'s.';
-      chartNote.style.display = 'block';
-      chartLegend.style.display = 'none';
-      chartCards.style.display = 'none';
+      hideChart('Submit your own picks to see everyone else\'s.');
       return;
     }
     const data = await res.json();
-    renderPicksChart(data.picks || {});
+    lastPicksData = data.picks || {};
+    renderActiveChartView();
   }catch(e){
-    chartNote.textContent = 'Could not load everyone\'s picks — try again shortly.';
-    chartNote.style.display = 'block';
-    chartLegend.style.display = 'none';
-    chartCards.style.display = 'none';
+    hideChart('Could not load everyone\'s picks — try again shortly.');
   }
+}
+
+function renderActiveChartView(){
+  if(chartViewMode === 'grid'){
+    renderPicksGrid(lastPicksData);
+  }else{
+    renderPicksChart(lastPicksData);
+  }
+}
+
+chartViewToggle.onclick = () => {
+  chartViewMode = chartViewMode === 'cards' ? 'grid' : 'cards';
+  chartViewToggle.textContent = chartViewMode === 'grid' ? 'Card view' : 'Compact view (for screenshots)';
+  renderActiveChartView();
+};
+
+// Last word of a team name — "Buffalo Bills" -> "Bills" — used only to
+// keep the compact grid narrow enough to fit on one screen.
+function shortTeamName(fullName){
+  return fullName.split(' ').pop();
+}
+
+// Every game and every submitted pick in one dense table, sized for a
+// single screenshot rather than daily phone scrolling. Purely a
+// different display of the same read-only data as the card view above.
+function renderPicksGrid(allPicks){
+  const games = WEEKS[currentWeek].games;
+  const submittedNames = FAMILY.filter(n => allPicks[n]);
+
+  if(submittedNames.length === 0){
+    hideChart('No one else has submitted yet — check back later.');
+    return;
+  }
+
+  chartNote.style.display = 'none';
+  chartLegend.style.display = 'flex';
+  chartCards.style.display = 'none';
+  chartGridWrap.style.display = 'block';
+
+  let html = '<thead><tr><th>Game</th>';
+  submittedNames.forEach(name=>{
+    html += `<th>${name}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  games.forEach(g=>{
+    html += `<tr><td class="chart-game">${shortTeamName(g.away)} @ ${shortTeamName(g.home)}</td>`;
+    submittedNames.forEach(name=>{
+      const pick = allPicks[name][g.id];
+      if(!pick){
+        html += '<td>—</td>';
+        return;
+      }
+      const side = pick === g.away ? 'away' : 'home';
+      const winner = results[g.id];
+      let cls = `grid-pick ${side}`;
+      if(winner){
+        cls += winner === pick ? ' correct' : ' wrong';
+      }
+      html += `<td class="${cls}">${shortTeamName(pick)}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody>';
+  chartGrid.innerHTML = html;
 }
 
 // Each game gets its own card so nothing scrolls sideways on a phone.
@@ -1186,15 +1316,13 @@ function renderPicksChart(allPicks){
   const submittedNames = FAMILY.filter(n => allPicks[n]);
 
   if(submittedNames.length === 0){
-    chartNote.textContent = 'No one else has submitted yet — check back later.';
-    chartNote.style.display = 'block';
-    chartLegend.style.display = 'none';
-    chartCards.style.display = 'none';
+    hideChart('No one else has submitted yet — check back later.');
     return;
   }
 
   chartNote.style.display = 'none';
   chartLegend.style.display = 'flex';
+  chartGridWrap.style.display = 'none';
   chartCards.style.display = 'block';
   chartCards.innerHTML = '';
 
