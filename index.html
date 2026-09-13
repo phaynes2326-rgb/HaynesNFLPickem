@@ -618,7 +618,7 @@
       <div class="chart-legend" id="chartLegend" style="display:none;">
         <span><span class="chart-dot away"></span>Picked the away team</span>
         <span><span class="chart-dot home"></span>Picked the home team</span>
-        <button class="text-btn" id="chartViewToggle" style="margin-left:auto;">Compact view (for screenshots)</button>
+        <button class="text-btn" id="chartViewToggle" style="margin-left:auto;">Card view</button>
       </div>
       <div id="chartCards" style="display:none;"></div>
       <div class="chart-scroll" id="chartGridWrap" style="display:none;">
@@ -853,7 +853,7 @@ const resetWeekBtn = document.getElementById('resetWeekBtn');
 const recomputeBtn = document.getElementById('recomputeBtn');
 
 let myLocked = false;
-let chartViewMode = 'cards'; // 'cards' or 'grid'
+let chartViewMode = 'grid'; // 'cards' or 'grid' — grid (compact) is the default view
 let lastPicksData = {};
 
 function showToast(msg){
