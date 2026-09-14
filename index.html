@@ -398,7 +398,6 @@
   table.chart-table{
     border-collapse:collapse;
     width:100%;
-    min-width:460px;
     table-layout:fixed;
     font-size:13px;
   }
@@ -409,7 +408,6 @@
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
-    min-width:56px;
   }
   .chart-table thead th{
     background:var(--field);
@@ -424,20 +422,9 @@
     color:var(--ink);
     text-align:left;
     padding-left:10px;
-    background:var(--white);
-  }
-  .chart-table tbody tr:nth-child(even) td.chart-game{
-    background:#FAF8F2;
   }
   .chart-table th:first-child, .chart-table td.chart-game{
-    width:100px;
-    min-width:100px;
-    position:sticky;
-    left:0;
-    z-index:1;
-  }
-  .chart-table thead th:first-child{
-    z-index:2;
+    width:26%;
   }
   .chart-table td.grid-pick{
     font-weight:700;
